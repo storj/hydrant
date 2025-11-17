@@ -9,13 +9,15 @@ import (
 )
 
 func Log(ctx context.Context, message string, annotations ...Annotation) {
-	GetSubmitter(ctx).Submit(Event{
-		System: []Annotation{
-			String("message", message),
-			Timestamp("timestamp", time.Now()),
-		},
-		User: annotations,
-	})
+	if submitter := GetSubmitter(ctx); submitter != nil {
+		submitter.Submit(Event{
+			System: []Annotation{
+				String("message", message),
+				Timestamp("timestamp", time.Now()),
+			},
+			User: annotations,
+		})
+	}
 }
 
 type Span struct {
@@ -35,16 +37,18 @@ func (s *Span) Annotate(annotations ...Annotation) {
 }
 
 func (s *Span) Done(err *error) {
-	if s.ev.System == nil {
-		now := time.Now()
+	if s.ev.System != nil {
+		return
+	}
 
-		s.sysBuf[5] = Timestamp("timestamp", now)
-		s.sysBuf[6] = Duration("duration", now.Sub(s.Start()))
-		s.sysBuf[7] = Bool("success", err == nil || *err == nil)
+	now := time.Now()
+	s.sysBuf[5] = Timestamp("timestamp", now)
+	s.sysBuf[6] = Duration("duration", now.Sub(s.Start()))
+	s.sysBuf[7] = Bool("success", err == nil || *err == nil)
+	s.ev.System = s.sysBuf[:]
 
-		s.ev.System = s.sysBuf[:]
-
-		GetSubmitter(s.ctx).Submit(s.ev)
+	if submitter := GetSubmitter(s.ctx); submitter != nil {
+		submitter.Submit(s.ev)
 	}
 }
 

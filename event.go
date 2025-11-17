@@ -47,7 +47,3 @@ func Bool(key string, val bool) Annotation {
 func Timestamp(key string, val time.Time) Annotation {
 	return Annotation{Key: key, Value: value.Timestamp(val)}
 }
-
-func Any(key string, val any) Annotation {
-	return Annotation{Key: key, Value: value.Any(val)}
-}

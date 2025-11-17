@@ -1,8 +1,9 @@
 package event
 
 import (
-	"hydrant/value"
 	"time"
+
+	"storj.io/hydrant/value"
 )
 
 type Event struct {

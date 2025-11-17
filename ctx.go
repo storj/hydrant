@@ -2,7 +2,8 @@ package hydrant
 
 import (
 	"context"
-	"hydrant/event"
+
+	"storj.io/hydrant/event"
 )
 
 type submitterKeyType struct{}

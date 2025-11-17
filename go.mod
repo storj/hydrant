@@ -1,4 +1,4 @@
-module hydrant
+module storj.io/hydrant
 
 go 1.25.3
 

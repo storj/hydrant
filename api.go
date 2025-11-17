@@ -2,11 +2,12 @@ package hydrant
 
 import (
 	"context"
-	"hydrant/event"
 	"runtime"
 	"time"
 
 	"github.com/zeebo/mwc"
+
+	"storj.io/hydrant/event"
 )
 
 func Log(ctx context.Context, message string, annotations ...event.Annotation) {

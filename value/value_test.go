@@ -12,7 +12,7 @@ import (
 
 func TestValue(t *testing.T) {
 	t.Run("string", func(t *testing.T) {
-		runValueTest(t, OfString, Value.AsString,
+		runValueTest(t, String, Value.String,
 			"hello world",
 			"",
 			"Hello 世界 🌍",
@@ -20,7 +20,7 @@ func TestValue(t *testing.T) {
 	})
 
 	t.Run("bytes", func(t *testing.T) {
-		runValueTest(t, OfBytes, Value.AsBytes,
+		runValueTest(t, Bytes, Value.Bytes,
 			[]byte{1, 2, 3, 4, 5},
 			[]byte{},
 			nil,
@@ -29,7 +29,7 @@ func TestValue(t *testing.T) {
 	})
 
 	t.Run("int", func(t *testing.T) {
-		runValueTest(t, OfInt, Value.AsInt,
+		runValueTest(t, Int, Value.Int,
 			int64(42),
 			int64(-12345),
 			int64(0),
@@ -39,7 +39,7 @@ func TestValue(t *testing.T) {
 	})
 
 	t.Run("uint", func(t *testing.T) {
-		runValueTest(t, OfUint, Value.AsUint,
+		runValueTest(t, Uint, Value.Uint,
 			uint64(42),
 			uint64(0),
 			uint64(math.MaxUint64),
@@ -47,7 +47,7 @@ func TestValue(t *testing.T) {
 	})
 
 	t.Run("duration", func(t *testing.T) {
-		runValueTest(t, OfDuration, Value.AsDuration,
+		runValueTest(t, Duration, Value.Duration,
 			5*time.Second,
 			-10*time.Minute,
 			0,
@@ -62,7 +62,7 @@ func TestValue(t *testing.T) {
 	})
 
 	t.Run("float", func(t *testing.T) {
-		runValueTest(t, OfFloat, Value.AsFloat,
+		runValueTest(t, Float, Value.Float,
 			3.14159,
 			-2.71828,
 			0.0,
@@ -74,12 +74,28 @@ func TestValue(t *testing.T) {
 		)
 	})
 
+	t.Run("bool", func(t *testing.T) {
+		runValueTest(t, Bool, Value.Bool,
+			true,
+			false,
+		)
+	})
+
+	t.Run("timestamp", func(t *testing.T) {
+		runValueTest(t, Timestamp, Value.Timestamp,
+			time.Now(),
+			time.Unix(0, 0),
+			time.Now().Add(100*time.Hour),
+			time.Now().Add(-100*time.Hour),
+		)
+	})
+
 	t.Run("any", func(t *testing.T) {
 		type Person struct {
 			Name string
 			Age  int
 		}
-		runValueTest(t, OfAny, func(v Value) (any, bool) { return v.AsAny(), true },
+		runValueTest(t, Any, func(v Value) (any, bool) { return v.AsAny(), true },
 			any(Person{Name: "Alice", Age: 30}),
 			any(&Person{Name: "Bob", Age: 25}),
 			nil,
@@ -91,24 +107,31 @@ func TestValue(t *testing.T) {
 }
 
 func TestValueAsAnyOptimizedTypes(t *testing.T) {
-	t.Run("string via AsAny", func(t *testing.T) { assertAsAnyType(t, OfString("hello"), "hello") })
-	t.Run("bytes via AsAny", func(t *testing.T) { assertAsAnyType(t, OfBytes([]byte{1, 2, 3}), []byte{1, 2, 3}) })
-	t.Run("int via AsAny", func(t *testing.T) { assertAsAnyType(t, OfInt(42), int64(42)) })
-	t.Run("uint via AsAny", func(t *testing.T) { assertAsAnyType(t, OfUint(42), uint64(42)) })
-	t.Run("float via AsAny", func(t *testing.T) { assertAsAnyType(t, OfFloat(3.14), 3.14) })
-	t.Run("duration via AsAny", func(t *testing.T) { assertAsAnyType(t, OfDuration(5*time.Second), 5*time.Second) })
+	t.Run("string via AsAny", func(t *testing.T) { assertAsAnyType(t, String("hello"), "hello") })
+	t.Run("bytes via AsAny", func(t *testing.T) { assertAsAnyType(t, Bytes([]byte{1, 2, 3}), []byte{1, 2, 3}) })
+	t.Run("int via AsAny", func(t *testing.T) { assertAsAnyType(t, Int(42), int64(42)) })
+	t.Run("uint via AsAny", func(t *testing.T) { assertAsAnyType(t, Uint(42), uint64(42)) })
+	t.Run("duration via AsAny", func(t *testing.T) { assertAsAnyType(t, Duration(5*time.Second), 5*time.Second) })
+	t.Run("float via AsAny", func(t *testing.T) { assertAsAnyType(t, Float(3.14), 3.14) })
+	t.Run("bool via AsAny", func(t *testing.T) { assertAsAnyType(t, Bool(true), true) })
+	t.Run("timestamp via AsAny", func(t *testing.T) {
+		now := time.Now()
+		assertAsAnyType(t, Timestamp(now), now)
+	})
 }
 
 func TestValueZeroValue(t *testing.T) {
 	var v Value
 
 	// Zero value should not match any optimized type
-	assertNotType(t, v, Value.AsString)
-	assertNotType(t, v, Value.AsBytes)
-	assertNotType(t, v, Value.AsInt)
-	assertNotType(t, v, Value.AsUint)
-	assertNotType(t, v, Value.AsDuration)
-	assertNotType(t, v, Value.AsFloat)
+	assertNotType(t, v, Value.String)
+	assertNotType(t, v, Value.Bytes)
+	assertNotType(t, v, Value.Int)
+	assertNotType(t, v, Value.Uint)
+	assertNotType(t, v, Value.Duration)
+	assertNotType(t, v, Value.Float)
+	assertNotType(t, v, Value.Bool)
+	assertNotType(t, v, Value.Timestamp)
 
 	// AsAny should return nil interface
 	assert.Nil(t, v.AsAny())
@@ -119,15 +142,17 @@ func TestValueZeroValue(t *testing.T) {
 //
 
 func BenchmarkValue(b *testing.B) {
-	b.Run("string", func(b *testing.B) { benchmarkType(b, "hello world", OfString, Value.AsString) })
-	b.Run("bytes", func(b *testing.B) { benchmarkType(b, []byte("hello world"), OfBytes, Value.AsBytes) })
-	b.Run("int", func(b *testing.B) { benchmarkType(b, int64(42), OfInt, Value.AsInt) })
-	b.Run("uint", func(b *testing.B) { benchmarkType(b, uint64(42), OfUint, Value.AsUint) })
-	b.Run("float", func(b *testing.B) { benchmarkType(b, 3.14159, OfFloat, Value.AsFloat) })
-	b.Run("duration", func(b *testing.B) { benchmarkType(b, 5*time.Second, OfDuration, Value.AsDuration) })
+	b.Run("string", func(b *testing.B) { benchmarkType(b, "hello world", String, Value.String) })
+	b.Run("bytes", func(b *testing.B) { benchmarkType(b, []byte("hello world"), Bytes, Value.Bytes) })
+	b.Run("int", func(b *testing.B) { benchmarkType(b, int64(42), Int, Value.Int) })
+	b.Run("uint", func(b *testing.B) { benchmarkType(b, uint64(42), Uint, Value.Uint) })
+	b.Run("float", func(b *testing.B) { benchmarkType(b, 3.14159, Float, Value.Float) })
+	b.Run("duration", func(b *testing.B) { benchmarkType(b, 5*time.Second, Duration, Value.Duration) })
+	b.Run("bool", func(b *testing.B) { benchmarkType(b, true, Bool, Value.Bool) })
+	b.Run("timestamp", func(b *testing.B) { benchmarkType(b, time.Now(), Timestamp, Value.Timestamp) })
 
 	b.Run("any", func(b *testing.B) {
-		benchmarkType(b, any(&testStringer{"hello"}), OfAny, func(v Value) (any, bool) {
+		benchmarkType(b, any(&testStringer{"hello"}), Any, func(v Value) (any, bool) {
 			return v.AsAny(), true
 		})
 	})
@@ -141,17 +166,28 @@ func BenchmarkValueAsAnyFromPrimitive(b *testing.B) {
 		}
 	}
 
-	b.Run("string", func(b *testing.B) { run(b, OfString("hello world")) })
-	b.Run("bytes", func(b *testing.B) { run(b, OfBytes([]byte("hello world"))) })
-	b.Run("int", func(b *testing.B) { run(b, OfInt(4200)) })
-	b.Run("uint", func(b *testing.B) { run(b, OfUint(4200)) })
-	b.Run("float", func(b *testing.B) { run(b, OfFloat(3.14)) })
-	b.Run("duration", func(b *testing.B) { run(b, OfDuration(5*time.Second)) })
+	b.Run("string", func(b *testing.B) { run(b, String("hello world")) })
+	b.Run("bytes", func(b *testing.B) { run(b, Bytes([]byte("hello world"))) })
+	b.Run("int", func(b *testing.B) { run(b, Int(4200)) })
+	b.Run("uint", func(b *testing.B) { run(b, Uint(4200)) })
+	b.Run("float", func(b *testing.B) { run(b, Float(3.14)) })
+	b.Run("duration", func(b *testing.B) { run(b, Duration(5*time.Second)) })
+	b.Run("bool", func(b *testing.B) { run(b, Bool(true)) })
+	b.Run("timestamp", func(b *testing.B) { run(b, Timestamp(time.Now())) })
 }
 
 //
 // helpers
 //
+
+func assertEqual[T any](t *testing.T, expected, actual T) {
+	switch exp := any(expected).(type) {
+	case time.Time:
+		assert.True(t, exp.Equal(any(actual).(time.Time)))
+	default:
+		assert.Equal(t, actual, expected)
+	}
+}
 
 func runValueTest[T any](t *testing.T, of func(T) Value, as func(Value) (T, bool), samples ...T) {
 	for _, sample := range samples {
@@ -160,7 +196,7 @@ func runValueTest[T any](t *testing.T, of func(T) Value, as func(Value) (T, bool
 			var ok bool
 			allocs := testing.AllocsPerRun(100, func() { result, ok = as(of(sample)) })
 			assert.That(t, ok)
-			assert.Equal(t, result, sample)
+			assertEqual(t, sample, result)
 			assert.Equal(t, allocs, 0.0)
 		})
 	}
@@ -170,7 +206,7 @@ func assertAsAnyType[T any](t *testing.T, v Value, expected T) {
 	result := v.AsAny()
 	actual, ok := result.(T)
 	assert.That(t, ok)
-	assert.Equal(t, actual, expected)
+	assertEqual(t, expected, actual)
 }
 
 func assertNotType[T any](t *testing.T, v Value, as func(Value) (T, bool)) {

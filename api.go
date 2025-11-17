@@ -6,15 +6,13 @@ import (
 	"time"
 
 	"github.com/zeebo/mwc"
-
-	"storj.io/hydrant/event"
 )
 
-func Log(ctx context.Context, message string, annotations ...event.Annotation) {
-	GetSubmitter(ctx).Submit(event.Event{
-		System: []event.Annotation{
-			event.OfString("message", message),
-			event.OfTimestamp("timestamp", time.Now()),
+func Log(ctx context.Context, message string, annotations ...Annotation) {
+	GetSubmitter(ctx).Submit(Event{
+		System: []Annotation{
+			String("message", message),
+			Timestamp("timestamp", time.Now()),
 		},
 		User: annotations,
 	})
@@ -22,17 +20,17 @@ func Log(ctx context.Context, message string, annotations ...event.Annotation) {
 
 type Span struct {
 	ctx    context.Context
-	ev     event.Event
-	sysBuf [8]event.Annotation
+	ev     Event
+	sysBuf [8]Annotation
 }
 
-func (s *Span) Name() string     { x, _ := s.sysBuf[0].Value.AsString(); return x }
-func (s *Span) Start() time.Time { x, _ := s.sysBuf[1].Value.AsTimestamp(); return x }
-func (s *Span) Id() uint64       { x, _ := s.sysBuf[2].Value.AsUint(); return x }
-func (s *Span) Parent() uint64   { x, _ := s.sysBuf[3].Value.AsUint(); return x }
-func (s *Span) Task() uint64     { x, _ := s.sysBuf[4].Value.AsUint(); return x }
+func (s *Span) Name() string     { x, _ := s.sysBuf[0].Value.String(); return x }
+func (s *Span) Start() time.Time { x, _ := s.sysBuf[1].Value.Timestamp(); return x }
+func (s *Span) Id() uint64       { x, _ := s.sysBuf[2].Value.Uint(); return x }
+func (s *Span) Parent() uint64   { x, _ := s.sysBuf[3].Value.Uint(); return x }
+func (s *Span) Task() uint64     { x, _ := s.sysBuf[4].Value.Uint(); return x }
 
-func (s *Span) Annotate(annotations ...event.Annotation) {
+func (s *Span) Annotate(annotations ...Annotation) {
 	s.ev.User = append(s.ev.User, annotations...)
 }
 
@@ -40,9 +38,9 @@ func (s *Span) Done(err *error) {
 	if s.ev.System == nil {
 		now := time.Now()
 
-		s.sysBuf[5] = event.OfTimestamp("timestamp", now)
-		s.sysBuf[6] = event.OfDuration("duration", now.Sub(s.Start()))
-		s.sysBuf[7] = event.OfBool("success", err == nil || *err == nil)
+		s.sysBuf[5] = Timestamp("timestamp", now)
+		s.sysBuf[6] = Duration("duration", now.Sub(s.Start()))
+		s.sysBuf[7] = Bool("success", err == nil || *err == nil)
 
 		s.ev.System = s.sysBuf[:]
 
@@ -50,7 +48,7 @@ func (s *Span) Done(err *error) {
 	}
 }
 
-func StartSpanNamed(ctx context.Context, name string, annotations ...event.Annotation) (context.Context, *Span) {
+func StartSpanNamed(ctx context.Context, name string, annotations ...Annotation) (context.Context, *Span) {
 	var id, parent, task uint64
 	for id == 0 {
 		id = mwc.Uint64()
@@ -66,20 +64,20 @@ func StartSpanNamed(ctx context.Context, name string, annotations ...event.Annot
 
 	s := &Span{
 		ctx: ctx,
-		ev:  event.Event{User: annotations},
-		sysBuf: [8]event.Annotation{
-			0: event.OfString("name", name),
-			1: event.OfTimestamp("start", time.Now()),
-			2: event.OfUint("span_id", id),
-			3: event.OfUint("parent_id", parent),
-			4: event.OfUint("task_id", task),
+		ev:  Event{User: annotations},
+		sysBuf: [8]Annotation{
+			0: String("name", name),
+			1: Timestamp("start", time.Now()),
+			2: Uint("span_id", id),
+			3: Uint("parent_id", parent),
+			4: Uint("task_id", task),
 		},
 	}
 
 	return (*contextSpan)(s), s
 }
 
-func StartSpan(ctx context.Context, annotations ...event.Annotation) (context.Context, *Span) {
+func StartSpan(ctx context.Context, annotations ...Annotation) (context.Context, *Span) {
 	var buf [1]uintptr
 	runtime.Callers(2, buf[:])
 	return StartSpanNamed(ctx, runtime.FuncForPC(buf[0]).Name(), annotations...)

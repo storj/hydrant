@@ -2,14 +2,12 @@ package hydrant
 
 import (
 	"context"
-
-	"storj.io/hydrant/event"
 )
 
 type submitterKeyType struct{}
 
 type Submitter interface {
-	Submit(event.Event)
+	Submit(Event)
 }
 
 func GetSubmitter(ctx context.Context) Submitter {

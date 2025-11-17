@@ -14,7 +14,7 @@ type Value struct {
 	data uint64
 }
 
-func OfString(x string) Value {
+func String(x string) Value {
 	return Value{
 		ptr1: unsafe.Pointer(&sentinels[0]),
 		ptr2: unsafe.Pointer(unsafe.StringData(x)),
@@ -22,7 +22,7 @@ func OfString(x string) Value {
 	}
 }
 
-func (v Value) AsString() (x string, ok bool) {
+func (v Value) String() (x string, ok bool) {
 	ok = v.ptr1 == unsafe.Pointer(&sentinels[0])
 	if ok {
 		x = unsafe.String((*byte)(v.ptr2), int(v.data))
@@ -30,7 +30,7 @@ func (v Value) AsString() (x string, ok bool) {
 	return x, ok
 }
 
-func OfBytes(x []byte) Value {
+func Bytes(x []byte) Value {
 	return Value{
 		ptr1: unsafe.Pointer(&sentinels[1]),
 		ptr2: unsafe.Pointer(unsafe.SliceData(x)),
@@ -38,7 +38,7 @@ func OfBytes(x []byte) Value {
 	}
 }
 
-func (v Value) AsBytes() (x []byte, ok bool) {
+func (v Value) Bytes() (x []byte, ok bool) {
 	ok = v.ptr1 == unsafe.Pointer(&sentinels[1])
 	if ok {
 		x = unsafe.Slice((*byte)(v.ptr2), int(v.data))
@@ -46,14 +46,14 @@ func (v Value) AsBytes() (x []byte, ok bool) {
 	return x, ok
 }
 
-func OfInt(x int64) Value {
+func Int(x int64) Value {
 	return Value{
 		ptr1: unsafe.Pointer(&sentinels[2]),
 		data: uint64(x),
 	}
 }
 
-func (v Value) AsInt() (x int64, ok bool) {
+func (v Value) Int() (x int64, ok bool) {
 	ok = v.ptr1 == unsafe.Pointer(&sentinels[2])
 	if ok {
 		x = int64(v.data)
@@ -61,14 +61,14 @@ func (v Value) AsInt() (x int64, ok bool) {
 	return x, ok
 }
 
-func OfUint(x uint64) Value {
+func Uint(x uint64) Value {
 	return Value{
 		ptr1: unsafe.Pointer(&sentinels[3]),
 		data: x,
 	}
 }
 
-func (v Value) AsUint() (x uint64, ok bool) {
+func (v Value) Uint() (x uint64, ok bool) {
 	ok = v.ptr1 == unsafe.Pointer(&sentinels[3])
 	if ok {
 		x = v.data
@@ -76,14 +76,14 @@ func (v Value) AsUint() (x uint64, ok bool) {
 	return x, ok
 }
 
-func OfDuration(x time.Duration) Value {
+func Duration(x time.Duration) Value {
 	return Value{
 		ptr1: unsafe.Pointer(&sentinels[4]),
 		data: uint64(x),
 	}
 }
 
-func (v Value) AsDuration() (x time.Duration, ok bool) {
+func (v Value) Duration() (x time.Duration, ok bool) {
 	ok = v.ptr1 == unsafe.Pointer(&sentinels[4])
 	if ok {
 		x = time.Duration(v.data)
@@ -91,14 +91,14 @@ func (v Value) AsDuration() (x time.Duration, ok bool) {
 	return x, ok
 }
 
-func OfFloat(x float64) Value {
+func Float(x float64) Value {
 	return Value{
 		ptr1: unsafe.Pointer(&sentinels[5]),
 		data: math.Float64bits(x),
 	}
 }
 
-func (v Value) AsFloat() (x float64, ok bool) {
+func (v Value) Float() (x float64, ok bool) {
 	ok = v.ptr1 == unsafe.Pointer(&sentinels[5])
 	if ok {
 		x = math.Float64frombits(v.data)
@@ -106,7 +106,7 @@ func (v Value) AsFloat() (x float64, ok bool) {
 	return x, ok
 }
 
-func OfBool(x bool) Value {
+func Bool(x bool) Value {
 	var data uint64
 	if x {
 		data = 1
@@ -117,7 +117,7 @@ func OfBool(x bool) Value {
 	}
 }
 
-func (v Value) AsBool() (x bool, ok bool) {
+func (v Value) Bool() (x bool, ok bool) {
 	ok = v.ptr1 == unsafe.Pointer(&sentinels[6])
 	if ok {
 		x = v.data != 0
@@ -125,14 +125,14 @@ func (v Value) AsBool() (x bool, ok bool) {
 	return x, ok
 }
 
-func OfTimestamp(t time.Time) Value {
+func Timestamp(t time.Time) Value {
 	return Value{
 		ptr1: unsafe.Pointer(&sentinels[7]),
 		data: uint64(t.UnixNano()),
 	}
 }
 
-func (v Value) AsTimestamp() (t time.Time, ok bool) {
+func (v Value) Timestamp() (t time.Time, ok bool) {
 	ok = v.ptr1 == unsafe.Pointer(&sentinels[7])
 	if ok {
 		t = time.Unix(0, int64(v.data))
@@ -140,7 +140,7 @@ func (v Value) AsTimestamp() (t time.Time, ok bool) {
 	return t, ok
 }
 
-func OfAny(x any) Value {
+func Any(x any) Value {
 	i := (*[2]unsafe.Pointer)(unsafe.Pointer(&x))
 	return Value{
 		ptr1: i[0],
@@ -151,21 +151,21 @@ func OfAny(x any) Value {
 func (v Value) AsAny() (x any) {
 	switch v.ptr1 {
 	case unsafe.Pointer(&sentinels[0]):
-		x, _ = v.AsString()
+		x, _ = v.String()
 	case unsafe.Pointer(&sentinels[1]):
-		x, _ = v.AsBytes()
+		x, _ = v.Bytes()
 	case unsafe.Pointer(&sentinels[2]):
-		x, _ = v.AsInt()
+		x, _ = v.Int()
 	case unsafe.Pointer(&sentinels[3]):
-		x, _ = v.AsUint()
+		x, _ = v.Uint()
 	case unsafe.Pointer(&sentinels[4]):
-		x, _ = v.AsDuration()
+		x, _ = v.Duration()
 	case unsafe.Pointer(&sentinels[5]):
-		x, _ = v.AsFloat()
+		x, _ = v.Float()
 	case unsafe.Pointer(&sentinels[6]):
-		x, _ = v.AsBool()
+		x, _ = v.Bool()
 	case unsafe.Pointer(&sentinels[7]):
-		x, _ = v.AsTimestamp()
+		x, _ = v.Timestamp()
 	default:
 		*(*[2]unsafe.Pointer)(unsafe.Pointer(&x)) = [2]unsafe.Pointer{v.ptr1, v.ptr2}
 	}

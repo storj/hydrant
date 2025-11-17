@@ -6,7 +6,7 @@ import (
 	"unsafe"
 )
 
-var sentinels [6]byte
+var sentinels [8]byte
 
 type Value struct {
 	ptr1 unsafe.Pointer
@@ -106,6 +106,40 @@ func (v Value) AsFloat() (x float64, ok bool) {
 	return x, ok
 }
 
+func OfBool(x bool) Value {
+	var data uint64
+	if x {
+		data = 1
+	}
+	return Value{
+		ptr1: unsafe.Pointer(&sentinels[6]),
+		data: data,
+	}
+}
+
+func (v Value) AsBool() (x bool, ok bool) {
+	ok = v.ptr1 == unsafe.Pointer(&sentinels[6])
+	if ok {
+		x = v.data != 0
+	}
+	return x, ok
+}
+
+func OfTimestamp(t time.Time) Value {
+	return Value{
+		ptr1: unsafe.Pointer(&sentinels[7]),
+		data: uint64(t.UnixNano()),
+	}
+}
+
+func (v Value) AsTimestamp() (t time.Time, ok bool) {
+	ok = v.ptr1 == unsafe.Pointer(&sentinels[7])
+	if ok {
+		t = time.Unix(0, int64(v.data))
+	}
+	return t, ok
+}
+
 func OfAny(x any) Value {
 	i := (*[2]unsafe.Pointer)(unsafe.Pointer(&x))
 	return Value{
@@ -128,6 +162,10 @@ func (v Value) AsAny() (x any) {
 		x, _ = v.AsDuration()
 	case unsafe.Pointer(&sentinels[5]):
 		x, _ = v.AsFloat()
+	case unsafe.Pointer(&sentinels[6]):
+		x, _ = v.AsBool()
+	case unsafe.Pointer(&sentinels[7]):
+		x, _ = v.AsTimestamp()
 	default:
 		*(*[2]unsafe.Pointer)(unsafe.Pointer(&x)) = [2]unsafe.Pointer{v.ptr1, v.ptr2}
 	}

@@ -61,18 +61,32 @@ func (s *Span) Done(err *error) {
 	}
 }
 
+func StartSpan(ctx context.Context, annotations ...Annotation) (context.Context, *Span) {
+	var buf [1]uintptr
+	runtime.Callers(2, buf[:])
+	return StartSpanNamed(ctx, runtime.FuncForPC(buf[0]).Name(), annotations...)
+}
+
 func StartSpanNamed(ctx context.Context, name string, annotations ...Annotation) (context.Context, *Span) {
-	var id, parent, task uint64
-	for id == 0 {
-		id = mwc.Uint64()
-	}
+	var parent, task uint64
 	if cs, ok := ctx.(*contextSpan); ok {
 		parent, task = (*Span)(cs).Id(), (*Span)(cs).Task()
 	} else if cs, _ = ctx.Value((*contextSpan)(nil)).(*contextSpan); ok {
 		parent, task = (*Span)(cs).Id(), (*Span)(cs).Task()
 	}
+	return StartRemoteSpanNamed(ctx, name, parent, task, annotations...)
+}
+
+func StartRemoteSpanNamed(ctx context.Context, name string, parent, task uint64, annotations ...Annotation) (context.Context, *Span) {
+	var id uint64
+	for id == 0 {
+		id = mwc.Uint64()
+	}
 	for task == 0 {
 		task = mwc.Uint64()
+	}
+	if parent == 0 {
+		parent = task
 	}
 
 	s := &Span{
@@ -88,12 +102,6 @@ func StartSpanNamed(ctx context.Context, name string, annotations ...Annotation)
 	}
 
 	return (*contextSpan)(s), s
-}
-
-func StartSpan(ctx context.Context, annotations ...Annotation) (context.Context, *Span) {
-	var buf [1]uintptr
-	runtime.Callers(2, buf[:])
-	return StartSpanNamed(ctx, runtime.FuncForPC(buf[0]).Name(), annotations...)
 }
 
 type contextSpan Span

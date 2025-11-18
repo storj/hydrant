@@ -3,12 +3,29 @@ package value
 import (
 	"fmt"
 	"math"
-	"reflect"
 	"testing"
 	"time"
+	"unsafe"
 
 	"github.com/zeebo/assert"
 )
+
+var g byte
+
+func TestIsSentinel(t *testing.T) {
+	for i := range len(sentinels) {
+		assert.That(t, isSentinel(&sentinels[i]))
+	}
+
+	assert.That(t, !isSentinel(nil))
+	assert.That(t, !isSentinel(&g))
+
+	var b byte
+	assert.That(t, !isSentinel(&b))
+
+	assert.That(t, !isSentinel((*byte)(unsafe.Add(unsafe.Pointer(&sentinels[len(sentinels)-1]), 1))))
+	assert.That(t, !isSentinel((*byte)(unsafe.Add(unsafe.Pointer(&sentinels[0]), -1))))
+}
 
 func TestValue(t *testing.T) {
 	t.Run("string", func(t *testing.T) {
@@ -84,6 +101,7 @@ func TestValue(t *testing.T) {
 	t.Run("timestamp", func(t *testing.T) {
 		runValueTest(t, Timestamp, Value.Timestamp,
 			time.Now(),
+			time.Now().UTC(),
 			time.Unix(0, 0),
 			time.Now().Add(100*time.Hour),
 			time.Now().Add(-100*time.Hour),
@@ -92,26 +110,27 @@ func TestValue(t *testing.T) {
 }
 
 func TestValueAsAnyOptimizedTypes(t *testing.T) {
-	t.Run("string via AsAny", func(t *testing.T) { assertAsAnyType(t, String("hello"), "hello") })
-	t.Run("empty string via AsAny", func(t *testing.T) { assertAsAnyType(t, String(""), "") })
-	t.Run("bytes via AsAny", func(t *testing.T) { assertAsAnyType(t, Bytes([]byte{1, 2, 3}), []byte{1, 2, 3}) })
-	t.Run("empty bytes via AsAny", func(t *testing.T) { assertAsAnyType(t, Bytes([]byte{}), []byte{}) })
-	t.Run("nil bytes via AsAny", func(t *testing.T) { assertAsAnyType(t, Bytes(nil), []byte(nil)) })
-	t.Run("int via AsAny", func(t *testing.T) { assertAsAnyType(t, Int(42), int64(42)) })
-	t.Run("uint via AsAny", func(t *testing.T) { assertAsAnyType(t, Uint(42), uint64(42)) })
-	t.Run("duration via AsAny", func(t *testing.T) { assertAsAnyType(t, Duration(5*time.Second), 5*time.Second) })
-	t.Run("float via AsAny", func(t *testing.T) { assertAsAnyType(t, Float(3.14), 3.14) })
-	t.Run("bool via AsAny", func(t *testing.T) { assertAsAnyType(t, Bool(true), true) })
-	t.Run("timestamp via AsAny", func(t *testing.T) {
-		now := time.Now()
-		assertAsAnyType(t, Timestamp(now), now)
-	})
+	nonNilEmptyString := "a"[1:]
+	t.Log("non-nil empty string pointer is non-nil:", unsafe.StringData(nonNilEmptyString) != nil)
+
+	t.Run("string", func(t *testing.T) { assertAsAnyType(t, String("hello"), "hello") })
+	t.Run("empty string", func(t *testing.T) { assertAsAnyType(t, String(""), "") })
+	t.Run("non-nil empty string", func(t *testing.T) { assertAsAnyType(t, String(nonNilEmptyString), "") })
+	t.Run("bytes", func(t *testing.T) { assertAsAnyType(t, Bytes([]byte{1, 2, 3}), []byte{1, 2, 3}) })
+	t.Run("empty bytes", func(t *testing.T) { assertAsAnyType(t, Bytes([]byte{}), []byte{}) })
+	t.Run("nil bytes", func(t *testing.T) { assertAsAnyType(t, Bytes(nil), []byte(nil)) })
+	t.Run("int", func(t *testing.T) { assertAsAnyType(t, Int(42), int64(42)) })
+	t.Run("uint", func(t *testing.T) { assertAsAnyType(t, Uint(42), uint64(42)) })
+	t.Run("duration", func(t *testing.T) { assertAsAnyType(t, Duration(5*time.Second), 5*time.Second) })
+	t.Run("float", func(t *testing.T) { assertAsAnyType(t, Float(3.14), 3.14) })
+	t.Run("bool", func(t *testing.T) { assertAsAnyType(t, Bool(true), true) })
+	t.Run("timestamp", func(t *testing.T) { assertAsAnyType(t, Timestamp(time.Unix(1, 2)), time.Unix(1, 2)) })
 }
 
 func TestValueZeroValue(t *testing.T) {
 	var v Value
 
-	// Zero value should not match any optimized type
+	// Zero value should not match any constructed type
 	assertNotType(t, v, Value.String)
 	assertNotType(t, v, Value.Bytes)
 	assertNotType(t, v, Value.Int)
@@ -148,6 +167,7 @@ func BenchmarkValueAsAnyFromPrimitive(b *testing.B) {
 		}
 	}
 
+	b.Run("zero", func(b *testing.B) { run(b, Value{}) })
 	b.Run("string", func(b *testing.B) { run(b, String("hello world")) })
 	b.Run("bytes", func(b *testing.B) { run(b, Bytes([]byte("hello world"))) })
 	b.Run("int", func(b *testing.B) { run(b, Int(4200)) })
@@ -200,21 +220,18 @@ func assertNotType[T any](t *testing.T, v Value, as func(Value) (T, bool)) {
 }
 
 func benchmarkType[T any](b *testing.B, sample T, of func(T) Value, as func(Value) (T, bool)) {
-	name := reflect.TypeFor[T]().String()
-
-	b.Run("Of "+name, func(b *testing.B) {
+	b.Run("of", func(b *testing.B) {
 		b.ReportAllocs()
 		for b.Loop() {
 			_ = of(sample)
 		}
 	})
 
-	b.Run("As "+name, func(b *testing.B) {
+	b.Run("as", func(b *testing.B) {
 		b.ReportAllocs()
 		v := of(sample)
 		for b.Loop() {
-			_, ok := as(v)
-			assert.That(b, ok)
+			_, _ = as(v)
 		}
 	})
 }

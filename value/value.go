@@ -9,8 +9,8 @@ import (
 var sentinels [6]byte
 
 func isSentinel(ptr *byte) bool {
-	return uintptr(unsafe.Pointer(ptr)) >= uintptr(unsafe.Pointer(&sentinels[0])) &&
-		uintptr(unsafe.Pointer(ptr)) <= uintptr(unsafe.Pointer(&sentinels[5]))
+	return uintptr(unsafe.Pointer(ptr))-
+		uintptr(unsafe.Pointer(&sentinels[0])) < uintptr(len(sentinels))
 }
 
 type Value struct {
@@ -141,18 +141,18 @@ func (v Value) Timestamp() (t time.Time, ok bool) {
 }
 
 func (v Value) AsAny() (x any) {
-	switch uintptr(unsafe.Pointer(v.ptr)) - uintptr(unsafe.Pointer(&sentinels[0])) {
-	case 0:
+	switch v.ptr {
+	case &sentinels[0]:
 		x, _ = v.Int()
-	case 1:
+	case &sentinels[1]:
 		x, _ = v.Uint()
-	case 2:
+	case &sentinels[2]:
 		x, _ = v.Duration()
-	case 3:
+	case &sentinels[3]:
 		x, _ = v.Float()
-	case 4:
+	case &sentinels[4]:
 		x, _ = v.Bool()
-	case 5:
+	case &sentinels[5]:
 		x, _ = v.Timestamp()
 	default:
 		switch v.data >> 62 {

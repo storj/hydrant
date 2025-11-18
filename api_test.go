@@ -8,13 +8,25 @@ import (
 
 func TestLog(t *testing.T) {
 	var bs bufferSubmitter
-
 	ctx := WithSubmitter(context.Background(), &bs)
 
 	Log(ctx, "test message",
 		String("user_key", "user_value"),
 		Int("user_int", 42),
 	)
+
+	t.Logf("%+v", bs)
+}
+
+func TestSpan(t *testing.T) {
+	var bs bufferSubmitter
+	ctx := WithSubmitter(context.Background(), &bs)
+
+	ctx, span := StartSpan(ctx,
+		String("user_key", "user_value"),
+		Int("user_int", 42),
+	)
+	span.Done(nil)
 
 	t.Logf("%+v", bs)
 }

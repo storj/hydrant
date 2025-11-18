@@ -10,10 +10,19 @@ import (
 
 func Log(ctx context.Context, message string, annotations ...Annotation) {
 	if submitter := GetSubmitter(ctx); submitter != nil {
+		var buf [1]uintptr
+		runtime.Callers(2, buf[:])
+
+		fn := runtime.FuncForPC(buf[0])
+		file, line := fn.FileLine(buf[0])
+
 		submitter.Submit(Event{
 			System: []Annotation{
 				String("message", message),
 				Timestamp("timestamp", time.Now()),
+				String("func", fn.Name()),
+				String("file", file),
+				Int("line", int64(line)),
 			},
 			User: annotations,
 		})
@@ -21,16 +30,16 @@ func Log(ctx context.Context, message string, annotations ...Annotation) {
 }
 
 type Span struct {
-	ctx    context.Context
-	ev     Event
-	sysBuf [8]Annotation
+	ctx context.Context
+	ev  Event
+	sys [8]Annotation
 }
 
-func (s *Span) Name() string     { x, _ := s.sysBuf[0].Value.String(); return x }
-func (s *Span) Start() time.Time { x, _ := s.sysBuf[1].Value.Timestamp(); return x }
-func (s *Span) Id() uint64       { x, _ := s.sysBuf[2].Value.Uint(); return x }
-func (s *Span) Parent() uint64   { x, _ := s.sysBuf[3].Value.Uint(); return x }
-func (s *Span) Task() uint64     { x, _ := s.sysBuf[4].Value.Uint(); return x }
+func (s *Span) Name() string     { x, _ := s.sys[0].Value.String(); return x }
+func (s *Span) Start() time.Time { x, _ := s.sys[1].Value.Timestamp(); return x }
+func (s *Span) Id() uint64       { x, _ := s.sys[2].Value.Uint(); return x }
+func (s *Span) Parent() uint64   { x, _ := s.sys[3].Value.Uint(); return x }
+func (s *Span) Task() uint64     { x, _ := s.sys[4].Value.Uint(); return x }
 
 func (s *Span) Annotate(annotations ...Annotation) {
 	s.ev.User = append(s.ev.User, annotations...)
@@ -42,10 +51,10 @@ func (s *Span) Done(err *error) {
 	}
 
 	now := time.Now()
-	s.sysBuf[5] = Timestamp("timestamp", now)
-	s.sysBuf[6] = Duration("duration", now.Sub(s.Start()))
-	s.sysBuf[7] = Bool("success", err == nil || *err == nil)
-	s.ev.System = s.sysBuf[:]
+	s.sys[5] = Timestamp("timestamp", now)
+	s.sys[6] = Duration("duration", now.Sub(s.Start()))
+	s.sys[7] = Bool("success", err == nil || *err == nil)
+	s.ev.System = s.sys[:]
 
 	if submitter := GetSubmitter(s.ctx); submitter != nil {
 		submitter.Submit(s.ev)
@@ -69,7 +78,7 @@ func StartSpanNamed(ctx context.Context, name string, annotations ...Annotation)
 	s := &Span{
 		ctx: ctx,
 		ev:  Event{User: annotations},
-		sysBuf: [8]Annotation{
+		sys: [8]Annotation{
 			0: String("name", name),
 			1: Timestamp("start", time.Now()),
 			2: Uint("span_id", id),

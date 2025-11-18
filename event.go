@@ -1,6 +1,7 @@
 package hydrant
 
 import (
+	"fmt"
 	"time"
 
 	"storj.io/hydrant/value"
@@ -14,6 +15,10 @@ type Event struct {
 type Annotation struct {
 	Key   string
 	Value value.Value
+}
+
+func (a Annotation) String() string {
+	return fmt.Sprintf("%s=%v", a.Key, a.Value.AsAny())
 }
 
 func String(key, val string) Annotation {

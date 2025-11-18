@@ -8,6 +8,11 @@ import (
 
 var sentinels [6]byte
 
+func isSentinel(ptr *byte) bool {
+	return uintptr(unsafe.Pointer(ptr)) >= uintptr(unsafe.Pointer(&sentinels[0])) &&
+		uintptr(unsafe.Pointer(ptr)) <= uintptr(unsafe.Pointer(&sentinels[5]))
+}
+
 type Value struct {
 	ptr  *byte
 	data uint64
@@ -24,11 +29,7 @@ func String(x string) (v Value) {
 }
 
 func (v Value) String() (x string, ok bool) {
-	ok = v.data>>62 == 0b01 &&
-		(uintptr(unsafe.Pointer(v.ptr)) < uintptr(unsafe.Pointer(&sentinels[0])) ||
-			uintptr(unsafe.Pointer(v.ptr)) > uintptr(unsafe.Pointer(&sentinels[5])))
-
-	if ok {
+	if ok = v.data>>62 == 0b01 && !isSentinel(v.ptr); ok {
 		x = unsafe.String(v.ptr, int(v.data&^(0b11<<62)))
 	}
 	return x, ok
@@ -45,11 +46,7 @@ func Bytes(x []byte) (v Value) {
 }
 
 func (v Value) Bytes() (x []byte, ok bool) {
-	ok = v.data>>62 == 0b10 &&
-		(uintptr(unsafe.Pointer(v.ptr)) < uintptr(unsafe.Pointer(&sentinels[0])) ||
-			uintptr(unsafe.Pointer(v.ptr)) > uintptr(unsafe.Pointer(&sentinels[5])))
-
-	if ok {
+	if ok = v.data>>62 == 0b10 && !isSentinel(v.ptr); ok {
 		x = unsafe.Slice(v.ptr, int(v.data&^(0b11<<62)))
 	}
 	return x, ok
@@ -63,8 +60,7 @@ func Int(x int64) Value {
 }
 
 func (v Value) Int() (x int64, ok bool) {
-	ok = v.ptr == &sentinels[0]
-	if ok {
+	if ok = v.ptr == &sentinels[0]; ok {
 		x = int64(v.data)
 	}
 	return x, ok
@@ -78,8 +74,7 @@ func Uint(x uint64) Value {
 }
 
 func (v Value) Uint() (x uint64, ok bool) {
-	ok = v.ptr == &sentinels[1]
-	if ok {
+	if ok = v.ptr == &sentinels[1]; ok {
 		x = v.data
 	}
 	return x, ok
@@ -93,8 +88,7 @@ func Duration(x time.Duration) Value {
 }
 
 func (v Value) Duration() (x time.Duration, ok bool) {
-	ok = v.ptr == &sentinels[2]
-	if ok {
+	if ok = v.ptr == &sentinels[2]; ok {
 		x = time.Duration(v.data)
 	}
 	return x, ok
@@ -108,8 +102,7 @@ func Float(x float64) Value {
 }
 
 func (v Value) Float() (x float64, ok bool) {
-	ok = v.ptr == &sentinels[3]
-	if ok {
+	if ok = v.ptr == &sentinels[3]; ok {
 		x = math.Float64frombits(v.data)
 	}
 	return x, ok
@@ -127,8 +120,7 @@ func Bool(x bool) Value {
 }
 
 func (v Value) Bool() (x bool, ok bool) {
-	ok = v.ptr == &sentinels[4]
-	if ok {
+	if ok = v.ptr == &sentinels[4]; ok {
 		x = v.data != 0
 	}
 	return x, ok
@@ -142,32 +134,31 @@ func Timestamp(t time.Time) Value {
 }
 
 func (v Value) Timestamp() (t time.Time, ok bool) {
-	ok = v.ptr == &sentinels[5]
-	if ok {
+	if ok = v.ptr == &sentinels[5]; ok {
 		t = time.Unix(0, int64(v.data))
 	}
 	return t, ok
 }
 
 func (v Value) AsAny() (x any) {
-	switch v.ptr {
-	case nil:
-	case &sentinels[0]:
+	switch uintptr(unsafe.Pointer(v.ptr)) - uintptr(unsafe.Pointer(&sentinels[0])) {
+	case 0:
 		x, _ = v.Int()
-	case &sentinels[1]:
+	case 1:
 		x, _ = v.Uint()
-	case &sentinels[2]:
+	case 2:
 		x, _ = v.Duration()
-	case &sentinels[3]:
+	case 3:
 		x, _ = v.Float()
-	case &sentinels[4]:
+	case 4:
 		x, _ = v.Bool()
-	case &sentinels[5]:
+	case 5:
 		x, _ = v.Timestamp()
 	default:
-		if v.data>>63 == 0 {
+		switch v.data >> 62 {
+		case 0b01:
 			x, _ = v.String()
-		} else {
+		case 0b10:
 			x, _ = v.Bytes()
 		}
 	}

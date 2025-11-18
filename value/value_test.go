@@ -89,26 +89,14 @@ func TestValue(t *testing.T) {
 			time.Now().Add(-100*time.Hour),
 		)
 	})
-
-	// t.Run("any", func(t *testing.T) {
-	// 	type Person struct {
-	// 		Name string
-	// 		Age  int
-	// 	}
-	// 	runValueTest(t, Any, func(v Value) (any, bool) { return v.AsAny(), true },
-	// 		any(Person{Name: "Alice", Age: 30}),
-	// 		any(&Person{Name: "Bob", Age: 25}),
-	// 		nil,
-	// 		any(&testStringer{"hello"}),
-	// 		any([]int{1, 2, 3, 4, 5}),
-	// 		any(map[string]int{"a": 1, "b": 2}),
-	// 	)
-	// })
 }
 
 func TestValueAsAnyOptimizedTypes(t *testing.T) {
 	t.Run("string via AsAny", func(t *testing.T) { assertAsAnyType(t, String("hello"), "hello") })
+	t.Run("empty string via AsAny", func(t *testing.T) { assertAsAnyType(t, String(""), "") })
 	t.Run("bytes via AsAny", func(t *testing.T) { assertAsAnyType(t, Bytes([]byte{1, 2, 3}), []byte{1, 2, 3}) })
+	t.Run("empty bytes via AsAny", func(t *testing.T) { assertAsAnyType(t, Bytes([]byte{}), []byte{}) })
+	t.Run("nil bytes via AsAny", func(t *testing.T) { assertAsAnyType(t, Bytes(nil), []byte(nil)) })
 	t.Run("int via AsAny", func(t *testing.T) { assertAsAnyType(t, Int(42), int64(42)) })
 	t.Run("uint via AsAny", func(t *testing.T) { assertAsAnyType(t, Uint(42), uint64(42)) })
 	t.Run("duration via AsAny", func(t *testing.T) { assertAsAnyType(t, Duration(5*time.Second), 5*time.Second) })
@@ -150,12 +138,6 @@ func BenchmarkValue(b *testing.B) {
 	b.Run("duration", func(b *testing.B) { benchmarkType(b, 5*time.Second, Duration, Value.Duration) })
 	b.Run("bool", func(b *testing.B) { benchmarkType(b, true, Bool, Value.Bool) })
 	b.Run("timestamp", func(b *testing.B) { benchmarkType(b, time.Now(), Timestamp, Value.Timestamp) })
-
-	// b.Run("any", func(b *testing.B) {
-	// 	benchmarkType(b, any(&testStringer{"hello"}), Any, func(v Value) (any, bool) {
-	// 		return v.AsAny(), true
-	// 	})
-	// })
 }
 
 func BenchmarkValueAsAnyFromPrimitive(b *testing.B) {

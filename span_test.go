@@ -4,41 +4,44 @@ import (
 	"context"
 	"fmt"
 	"testing"
+
+	"github.com/zeebo/assert"
 )
-
-func TestLog(t *testing.T) {
-	var bs bufferSubmitter
-	ctx := WithSubmitter(context.Background(), &bs)
-
-	Log(ctx, "test message",
-		String("user_key", "user_value"),
-		Int("user_int", 42),
-	)
-
-	t.Logf("%+v", bs)
-}
 
 func TestSpan(t *testing.T) {
 	var bs bufferSubmitter
 	ctx := WithSubmitter(context.Background(), &bs)
 
-	ctx, span := StartSpan(ctx,
-		String("user_key", "user_value"),
-		Int("user_int", 42),
-	)
-	span.Done(nil)
+	func() {
+		assert.Nil(t, GetSpan(ctx))
 
-	t.Logf("%+v", bs)
-}
+		ctx, span1 := StartSpan(ctx,
+			String("user_key", "user_value"),
+			Int("user_int", 42),
+		)
+		defer span1.Done(nil)
 
-func BenchmarkLog(b *testing.B) {
-	ctx := WithSubmitter(context.Background(), nullSubmitter{})
+		assert.Equal(t, GetSpan(ctx), span1)
+		assert.Equal(t, span1.Task(), span1.Parent())
 
-	b.ReportAllocs()
-	for b.Loop() {
-		Log(ctx, "benchmark message")
+		ctx, span2 := StartSpan(ctx,
+			String("child_key", "child_value"),
+		)
+		defer span2.Done(nil)
+
+		assert.Equal(t, GetSpan(ctx), span2)
+		assert.Equal(t, span2.Parent(), span1.Id())
+		assert.Equal(t, span1.Task(), span2.Task())
+	}()
+
+	for _, ev := range bs {
+		t.Logf("%+v", ev)
 	}
 }
+
+//
+// benchmarks
+//
 
 func BenchmarkStartSpan(b *testing.B) {
 	ctx := WithSubmitter(context.Background(), nullSubmitter{})
@@ -85,11 +88,3 @@ func recursiveSpanNamed(ctx context.Context, depth int) (err error) {
 	}
 	return ctx.Err()
 }
-
-type nullSubmitter struct{}
-
-func (ns nullSubmitter) Submit(ev Event) {}
-
-type bufferSubmitter []Event
-
-func (bs *bufferSubmitter) Submit(ev Event) { *bs = append(*bs, ev) }

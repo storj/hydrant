@@ -1,0 +1,49 @@
+# TODO
+# please return all events with non nil errors default not aggregated, but with aggregation if the event count exceeds 10/time unit (common errors get aggregated, uncommon errors get sent up whole)
+
+refresh_interval: 10m
+global_fields:
+  - "instance_id"
+  - "hostname"
+  - "version"
+  - "module"
+  - "uptime"
+  - "os"
+  - "arch"
+  - "troop(globals, 'runtime.GOOS')"
+
+destinations:
+  - address: collectora.storj.io:49372
+    aggregation_interval: 30m
+    max_memory_usage: ... # if we hit the limit we need to send "drop" events
+    queries:
+      # please return max, min, sum of piece commit times grouped by success, or error code
+      - filter: equal("name", "storj.io/storj/storagenode/piece/(*Piece).Commit") && exists("span_id")
+        group_by: ["success"]
+        aggregates: [max("duration"), min("duration"), sum("duration"), count()]
+
+      # please return the histdb distribution of value fields "a", "b", "c" for all events in packages with prefix storj.io/storj/storagenode
+      - filter: has_prefix("name", "storj.io/storj/storagenode")
+        aggregate_over: ["duration", "span_id", "trace_id", "parent_id", ...]
+        aggregates: [dist("a"), dist("b"), dist("c")]
+
+      # please send every log line immediately
+      - filter: exists("message")
+
+      # please send every log line from storj.io/storj/storagenode immediately
+      - filter: exists("message") && has_prefix("name", "storj.io/storj/storagenode")
+
+      # please return max, min, sum of piece commit times grouped by success for specific uplink ids
+      - filter: equal("name", "storj.io/storj/storagenode/piece/(*Piece).Commit") && exists("span_id") && in("uplink_id", ["135235", "1243351", "123134"])
+        group_by: ["success"]
+        aggregates: [max("duration"), min("duration"), sum("duration")]
+
+      # please return spans for all traces with prefix 123
+      - filter: has_prefix("trace_id", "123")
+
+      - filter: equal("trace:initiator", "jeff")
+
+  - address: collectorb.storj.io:49372
+    aggregation_interval: 30m
+    queries:
+      - filter: has_prefix("trace_id", "123")

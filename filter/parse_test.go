@@ -10,20 +10,18 @@ func TestParse(t *testing.T) {
 	var p Parser
 	SetBuiltins(&p)
 
-	filter, err := p.Parse(`(equal(key("foo"), "b\tar") && exists("test")) || less(rand(), 0.5)`)
+	filter, err := p.Parse(`eq(key("foo"), "b\tar") && (has("test") || lt(rand(), 0.5))`)
 	assert.NoError(t, err)
 
 	t.Logf("prog: %v", filter.prog)
+	t.Logf("vals: %v", anyfy(filter.vals))
 }
 
 func BenchmarkParse(b *testing.B) {
 	var p Parser
-	p.SetFunction("equal", func(es *EvalState) bool { return true })
-	p.SetFunction("exists", func(es *EvalState) bool { return true })
-	p.SetFunction("less", func(es *EvalState) bool { return true })
-	p.SetFunction("rand", func(es *EvalState) bool { return true })
+	SetBuiltins(&p)
 
-	query := `(equal(key("foo"), "bar") && exists("test")) || less(rand(), 0.5)`
+	query := `(eq(key("foo"), "bar") && has("test")) || lt(rand(), 0.5)`
 
 	b.ReportAllocs()
 

@@ -6,30 +6,31 @@ import (
 )
 
 type EvalState struct {
-	ev    hydrant.Event
-	stack []value.Value
+	ev       hydrant.Event
+	stack    []value.Value
+	executed int
 }
 
 func (es *EvalState) Evaluate(f *Filter, ev hydrant.Event) bool {
 	es.ev = ev
 	es.stack = es.stack[:0]
+	es.executed = 0
 
-	for _, i := range f.prog {
+	for pc := uint(0); pc < uint(len(f.prog)); pc++ {
+		i := f.prog[pc]
+		es.executed++
+
 		switch i.op {
+		case instNop:
+
 		case instPushStr:
 			es.Push(value.String(token(i.arg).literal(f.filter)))
 
-		case instPushFloat:
-			if int(i.arg) >= len(f.floats) {
+		case instPushVal:
+			if int(i.arg) >= len(f.vals) {
 				return false
 			}
-			es.Push(value.Float(f.floats[i.arg]))
-
-		case instPushDur:
-			if int(i.arg) >= len(f.durs) {
-				return false
-			}
-			es.Push(value.Duration(f.durs[i.arg]))
+			es.Push(f.vals[i.arg])
 
 		case instCall:
 			if int(i.arg) >= len(f.parser.funcs) {
@@ -39,23 +40,51 @@ func (es *EvalState) Evaluate(f *Filter, ev hydrant.Event) bool {
 				return false
 			}
 
+		case instKey:
+			ev, ok := es.Lookup(token(i.arg).literal(f.filter))
+			if !ok {
+				return false
+			}
+			es.Push(ev)
+
+		case instHas:
+			_, ok := es.Lookup(token(i.arg).literal(f.filter))
+			es.Push(value.Bool(ok))
+
 		case instAnd:
-			left, lok := pop(es, value.Value.Bool)
 			right, rok := pop(es, value.Value.Bool)
+			left, lok := pop(es, value.Value.Bool)
 			if !lok || !rok {
 				return false
 			}
 			es.Push(value.Bool(left && right))
 
+		case instJumpFalse:
+			cond, ok := peek(es, value.Value.Bool)
+			if !ok {
+				return false
+			}
+			if !cond {
+				pc += uint(i.arg)
+			}
+
 		case instOr:
-			left, lok := pop(es, value.Value.Bool)
 			right, rok := pop(es, value.Value.Bool)
+			left, lok := pop(es, value.Value.Bool)
 			if !lok || !rok {
 				return false
 			}
 			es.Push(value.Bool(left || right))
 
-		case instNop:
+		case instJumpTrue:
+			cond, ok := peek(es, value.Value.Bool)
+			if !ok {
+				return false
+			}
+			if cond {
+				pc += uint(i.arg)
+			}
+
 		default:
 			return false
 		}
@@ -63,15 +92,6 @@ func (es *EvalState) Evaluate(f *Filter, ev hydrant.Event) bool {
 
 	res, ok := pop(es, value.Value.Bool)
 	return res && ok
-}
-
-func pop[T any](es *EvalState, convert func(value.Value) (T, bool)) (t T, ok bool) {
-	if n := len(es.stack); n > 0 {
-		v := es.stack[n-1]
-		es.stack = es.stack[:n-1]
-		t, ok = convert(v)
-	}
-	return t, ok
 }
 
 func (es *EvalState) Push(v value.Value) {
@@ -87,17 +107,53 @@ func (es *EvalState) Pop() (value.Value, bool) {
 	return value.Value{}, false
 }
 
-func (es *EvalState) Lookup(key string) (value.Value, bool) {
-	// TODO: hey jt this is where i was like "man they should really be maps"
-	for i := len(es.ev.System) - 1; i >= 0; i-- {
-		if ann := es.ev.System[i]; ann.Key == key {
-			return ann.Value, true
-		}
-	}
-	for i := len(es.ev.User) - 1; i >= 0; i-- {
-		if ann := es.ev.User[i]; ann.Key == key {
-			return ann.Value, true
-		}
+func (es *EvalState) Peek() (value.Value, bool) {
+	if n := len(es.stack); n > 0 {
+		return es.stack[n-1], true
 	}
 	return value.Value{}, false
+}
+
+func (es *EvalState) Lookup(key string) (value.Value, bool) {
+	// TODO: hey jt this is where i was like "man they should really be maps"
+
+	s := es.ev.System
+	for i := len(s) - 1; i >= 0; i-- {
+		if ann := s[i]; ann.Key == key {
+			return ann.Value, true
+		}
+	}
+
+	u := es.ev.User
+	for i := len(u) - 1; i >= 0; i-- {
+		if ann := u[i]; ann.Key == key {
+			return ann.Value, true
+		}
+	}
+
+	return value.Value{}, false
+}
+
+func pop[T any](es *EvalState, convert func(value.Value) (T, bool)) (t T, ok bool) {
+	if n := len(es.stack); n > 0 {
+		v := es.stack[n-1]
+		es.stack = es.stack[:n-1]
+		t, ok = convert(v)
+	}
+	return t, ok
+}
+
+func peek[T any](es *EvalState, convert func(value.Value) (T, bool)) (t T, ok bool) {
+	if n := len(es.stack); n > 0 {
+		t, ok = convert(es.stack[n-1])
+	}
+	return t, ok
+}
+
+func anyfy(vs []value.Value) []any {
+	av := make([]any, len(vs))
+	for i, v := range vs {
+		av[i] = v.AsAny()
+	}
+	return av
 }

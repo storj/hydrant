@@ -5,14 +5,15 @@ import (
 	"time"
 
 	"github.com/zeebo/errs/v2"
+
+	"storj.io/hydrant/value"
 )
 
 type Filter struct {
 	parser *Parser
 	filter string
 	prog   []inst
-	floats []float64
-	durs   []time.Duration
+	vals   []value.Value
 }
 
 type Parser struct {
@@ -22,7 +23,11 @@ type Parser struct {
 
 func (p *Parser) SetFunction(name string, fn func(*EvalState) bool) {
 	if p.names == nil {
-		p.names = make(map[string]uint32)
+		p.names = map[string]uint32{"key": 0, "has": 1}
+		p.funcs = append(p.funcs, intrinsicKey, intrinsicHas)
+	}
+	if name == "key" || name == "has" {
+		panic("cannot override builtin function: " + name)
 	}
 	if n, ok := p.names[name]; !ok {
 		n = uint32(len(p.funcs))
@@ -31,6 +36,29 @@ func (p *Parser) SetFunction(name string, fn func(*EvalState) bool) {
 	} else {
 		p.funcs[n] = fn
 	}
+}
+
+func intrinsicKey(es *EvalState) bool {
+	key, ok := pop(es, value.Value.String)
+	if !ok {
+		return false
+	}
+	v, ok := es.Lookup(key)
+	if !ok {
+		return false
+	}
+	es.Push(v)
+	return true
+}
+
+func intrinsicHas(es *EvalState) bool {
+	key, ok := pop(es, value.Value.String)
+	if !ok {
+		return false
+	}
+	_, ok = es.Lookup(key)
+	es.Push(value.Bool(ok))
+	return true
 }
 
 func (p *Parser) Parse(filter string) (*Filter, error) {
@@ -59,7 +87,71 @@ func (p *Parser) Parse(filter string) (*Filter, error) {
 		}
 	}
 
+	ps.into.prog = optimize(ps.into.prog)
+
 	return ps.into, nil
+}
+
+func optimize(prog []inst) []inst {
+	// peephole optimize key/has calls on string literals. they look like
+	// 	(pushStr X) (call 0) => (key X) (nop)
+	// 	(pushStr X) (call 1) => (has X) (nop)
+	// we insert the nop to keep instruction offsets the same for jumps.
+	for i := 0; i < len(prog)-1; i++ {
+		if prog[i].op == instPushStr && prog[i+1].op == instCall && prog[i+1].arg <= 1 {
+			if prog[i+1].arg == 0 {
+				prog[i] = inst{op: instKey, arg: prog[i].arg}
+			} else {
+				prog[i] = inst{op: instHas, arg: prog[i].arg}
+			}
+			prog[i+1] = inst{op: instNop}
+		}
+	}
+
+	// optimize a jumpFalse/True that targets a jumpFalse/True to target what the next one targets
+	// instead. we do this backwards to avoid O(n^2) behavior because future jumps will already be
+	// set to their final targets. this way we also don't need to loop to a fixed point.
+	for i := len(prog) - 1; i >= 0; i-- {
+		if prog[i].op != instJumpFalse && prog[i].op != instJumpTrue {
+			continue
+		}
+
+		target := int(i) + int(prog[i].arg) + 1
+		if target < 0 || target >= len(prog) {
+			continue
+		}
+
+		// if the next op will do the same thing, jump to where it jumps to instead. because it is
+		// later in the instruction stream, it is already optimally targeted.
+		if prog[target].op == prog[i].op {
+			prog[i].arg += prog[target].arg + 1
+		}
+	}
+
+	// we're going to remove nops. we do this in two steps. first, before we remove them, we fix up
+	// any jumps to account for the nops that will be removed. then we remove the nops. we do this
+	// so that indexes stay consistent while we fix up jumps.
+	for i := range prog {
+		if prog[i].op != instJumpFalse && prog[i].op != instJumpTrue {
+			continue
+		}
+		for _, inst := range prog[i+1 : i+int(prog[i].arg)] {
+			if inst.op == instNop {
+				prog[i].arg--
+			}
+		}
+	}
+
+	// remove the nops now that all the jumps are expecting them to be gone.
+	out := prog[:0]
+	for _, inst := range prog {
+		if inst.op != instNop {
+			out = append(out, inst)
+		}
+	}
+	prog = out
+
+	return prog
 }
 
 type parseState struct {
@@ -69,12 +161,13 @@ type parseState struct {
 	into   *Filter
 }
 
-func (ps *parseState) pushOp(op byte) {
-	ps.pushInst(op, 0)
+func (ps *parseState) pushOp(op byte) int {
+	return ps.pushInst(op, 0)
 }
 
-func (ps *parseState) pushInst(op byte, arg uint32) {
+func (ps *parseState) pushInst(op byte, arg uint32) int {
 	ps.into.prog = append(ps.into.prog, inst{op: op, arg: arg})
+	return len(ps.into.prog) - 1
 }
 
 func (ps *parseState) peek() token {
@@ -113,8 +206,19 @@ func (ps *parseState) parseCompoundExpr() error {
 		}
 		ps.tokn++
 
+		// insert placeholder for jump
+		n := ps.pushOp(instNop)
+
 		if err := ps.parseExpr(); err != nil {
 			return err
+		}
+
+		// fixup jump now that we know how many instructions to advance
+		switch offset := uint32(len(ps.into.prog) - n); op {
+		case instAnd:
+			ps.into.prog[n] = inst{op: instJumpFalse, arg: offset}
+		case instOr:
+			ps.into.prog[n] = inst{op: instJumpTrue, arg: offset}
 		}
 
 		ps.pushOp(op)
@@ -173,22 +277,22 @@ func (ps *parseState) parseExpr() error {
 		lit = unquoted
 	}
 
-	// if it's a duration, push that
-	if dur, err := time.ParseDuration(lit); err == nil {
-		ps.pushInst(instPushDur, uint32(len(ps.into.durs)))
-		ps.into.durs = append(ps.into.durs, dur)
+	var v value.Value
+	if in, err := strconv.ParseInt(lit, 0, 64); err == nil {
+		v = value.Int(in)
+	} else if un, err := strconv.ParseUint(lit, 0, 64); err == nil {
+		v = value.Uint(un)
+	} else if dur, err := time.ParseDuration(lit); err == nil {
+		v = value.Duration(dur)
+	} else if float, err := strconv.ParseFloat(lit, 64); err == nil {
+		v = value.Float(float)
+	} else {
+		ps.pushInst(instPushStr, uint32(tok))
 		return nil
 	}
 
-	// if it's a float, push that
-	if float, err := strconv.ParseFloat(lit, 64); err == nil {
-		ps.pushInst(instPushFloat, uint32(len(ps.into.floats)))
-		ps.into.floats = append(ps.into.floats, float)
-		return nil
-	}
-
-	// otherwise it's just a string literal
-	ps.pushInst(instPushStr, uint32(tok))
+	ps.pushInst(instPushVal, uint32(len(ps.into.vals)))
+	ps.into.vals = append(ps.into.vals, v)
 	return nil
 }
 

@@ -173,18 +173,22 @@ func (ps *parseState) parseExpr() error {
 		lit = unquoted
 	}
 
+	// if it's a duration, push that
 	if dur, err := time.ParseDuration(lit); err == nil {
 		ps.pushInst(instPushDur, uint32(len(ps.into.durs)))
 		ps.into.durs = append(ps.into.durs, dur)
 		return nil
 	}
+
+	// if it's a float, push that
 	if float, err := strconv.ParseFloat(lit, 64); err == nil {
 		ps.pushInst(instPushFloat, uint32(len(ps.into.floats)))
 		ps.into.floats = append(ps.into.floats, float)
-	} else {
-		ps.pushInst(instPushStr, uint32(tok))
+		return nil
 	}
 
+	// otherwise it's just a string literal
+	ps.pushInst(instPushStr, uint32(tok))
 	return nil
 }
 

@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/zeebo/assert"
-	"github.com/zeebo/mwc"
 
 	"storj.io/hydrant"
 	"storj.io/hydrant/value"
@@ -13,18 +12,13 @@ import (
 
 func BenchmarkEval(b *testing.B) {
 	var p Parser
-	p.SetFunction("equal", (*EvalState).Equal)
-	p.SetFunction("exists", (*EvalState).Exists)
-	p.SetFunction("key", (*EvalState).Key)
-	p.SetFunction("less", (*EvalState).Less)
-	p.SetFunction("true", func(es *EvalState) bool { es.Push(value.Bool(true)); return true })
-	p.SetFunction("rand", func(es *EvalState) bool { es.Push(value.Float(mwc.Float64())); return true })
+	SetBuiltins(&p)
 
 	filter, err := p.Parse(`
-		   equal(key("foo"), "bar")
-		&& exists("test")
+		   equal(key(foo), bar)
+		&& exists(test)
 		&& less(rand(), 1)
-		&& less(key("dur"), "2m")
+		&& less(key(dur), 2m)
 		&& true()
 	`)
 	assert.NoError(b, err)

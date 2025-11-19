@@ -16,6 +16,7 @@ const (
 	// function calls
 	instPushStr   // push(strs[arg])
 	instPushFloat // push(floats[arg])
+	instPushDur   // push(durs[arg])
 	instCall      // push(call(funcs[i.arg1]))
 
 	// conjunctions

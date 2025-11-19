@@ -25,6 +25,12 @@ func (es *EvalState) Evaluate(f *Filter, ev hydrant.Event) bool {
 			}
 			es.Push(value.Float(f.floats[i.arg]))
 
+		case instPushDur:
+			if int(i.arg) >= len(f.durs) {
+				return false
+			}
+			es.Push(value.Duration(f.durs[i.arg]))
+
 		case instCall:
 			if int(i.arg) >= len(f.parser.funcs) {
 				return false

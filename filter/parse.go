@@ -2,6 +2,7 @@ package filter
 
 import (
 	"strconv"
+	"time"
 
 	"github.com/zeebo/errs/v2"
 )
@@ -11,6 +12,7 @@ type Filter struct {
 	filter string
 	prog   []inst
 	floats []float64
+	durs   []time.Duration
 }
 
 type Parser struct {
@@ -155,6 +157,8 @@ func (ps *parseState) parseExpr() error {
 		return ps.parseCallBody(fn)
 	}
 
+	// if it has an escape, unquote it and update the token to point to the unescaped literal that
+	// we append to the filter lol.
 	if tok.hasEscape() {
 		unquoted, err := strconv.Unquote(`"` + lit + `"`)
 		if err != nil {
@@ -162,8 +166,18 @@ func (ps *parseState) parseExpr() error {
 		}
 		tok = newLiteralToken(true, false, uint(len(ps.into.filter)), uint(len(unquoted)))
 		ps.into.filter += unquoted
+
+		if tok.literal(ps.into.filter) != unquoted {
+			return errs.Errorf("internal error: token literal mismatch after unescape")
+		}
+		lit = unquoted
 	}
 
+	if dur, err := time.ParseDuration(lit); err == nil {
+		ps.pushInst(instPushDur, uint32(len(ps.into.durs)))
+		ps.into.durs = append(ps.into.durs, dur)
+		return nil
+	}
 	if float, err := strconv.ParseFloat(lit, 64); err == nil {
 		ps.pushInst(instPushFloat, uint32(len(ps.into.floats)))
 		ps.into.floats = append(ps.into.floats, float)

@@ -96,7 +96,7 @@ func nextToken(pos uint, x string) (t token, l uint) {
 	}
 	x = x[pos:]
 
-	for len(x) > 0 && (x[0] == ' ' || x[0] == '\t') {
+	for len(x) > 0 && (x[0] == ' ' || x[0] == '\t' || x[0] == '\n') {
 		x = x[1:]
 		pos++
 		l++

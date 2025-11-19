@@ -17,7 +17,7 @@ func TestParse(t *testing.T) {
 	p.SetFunction("less", (*EvalState).Less)
 	p.SetFunction("rand", func(es *EvalState) bool { es.Push(value.Float(mwc.Float64())); return true })
 
-	filter, err := p.Parse(`(equal(key("foo"), "bar") && exists("test")) || less(rand(), 0.5)`)
+	filter, err := p.Parse(`(equal(key("foo"), "b\tar") && exists("test")) || less(rand(), 0.5)`)
 	assert.NoError(t, err)
 
 	t.Logf("prog: %v", filter.prog)

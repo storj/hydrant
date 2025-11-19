@@ -164,3 +164,42 @@ func (v Value) AsAny() (x any) {
 	}
 	return x
 }
+
+type Kind uint8
+
+const (
+	KindEmpty     Kind = 0
+	KindString    Kind = 1
+	KindBytes     Kind = 2
+	KindInt       Kind = 3
+	KindUint      Kind = 4
+	KindDuration  Kind = 5
+	KindFloat     Kind = 6
+	KindBool      Kind = 7
+	KindTimestamp Kind = 8
+)
+
+func (v Value) Kind() Kind {
+	d := uintptr(unsafe.Pointer(v.ptr)) - uintptr(unsafe.Pointer(&sentinels[0]))
+	if d < uintptr(len(sentinels)) {
+		return Kind(d + 3)
+	}
+	return Kind(v.data >> 62)
+}
+
+func Equal(left, right Value) bool {
+	if left.ptr == right.ptr {
+		return left.data == right.data
+	}
+	switch (left.data>>62)<<2 | (right.data >> 62) {
+	case 0b0101:
+		lstr, _ := left.String()
+		rstr, _ := right.String()
+		return lstr == rstr
+	case 0b1010:
+		lb, _ := left.Bytes()
+		rb, _ := right.Bytes()
+		return string(lb) == string(rb)
+	}
+	return false
+}

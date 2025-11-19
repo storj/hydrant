@@ -27,6 +27,17 @@ func TestIsSentinel(t *testing.T) {
 	assert.That(t, !isSentinel((*byte)(unsafe.Add(unsafe.Pointer(&sentinels[0]), -1))))
 }
 
+func TestKind(t *testing.T) {
+	assert.Equal(t, String("hello").Kind(), KindString)
+	assert.Equal(t, Bytes([]byte{1, 2, 3}).Kind(), KindBytes)
+	assert.Equal(t, Int(42).Kind(), KindInt)
+	assert.Equal(t, Uint(42).Kind(), KindUint)
+	assert.Equal(t, Duration(5*time.Second).Kind(), KindDuration)
+	assert.Equal(t, Float(3.14).Kind(), KindFloat)
+	assert.Equal(t, Bool(true).Kind(), KindBool)
+	assert.Equal(t, Timestamp(time.Now()).Kind(), KindTimestamp)
+}
+
 func TestValue(t *testing.T) {
 	t.Run("string", func(t *testing.T) {
 		runValueTest(t, String, Value.String,

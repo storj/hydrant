@@ -69,7 +69,7 @@ func BenchmarkEval(b *testing.B) {
 	SetBuiltins(&p)
 
 	filter, err := p.Parse(`
-		eq(key(foo), bar) && has(test) && lt(rand(), 1) && gte(key(dur), 1m)
+		eq(key(foo), bart) && has(test) && lt(rand(), 1) && gte(key(dur), 1m)
 	`)
 	assert.NoError(b, err)
 	b.Log("prog:", filter.prog)
@@ -86,7 +86,7 @@ func BenchmarkEval(b *testing.B) {
 	}
 
 	var es EvalState
-	assert.That(b, es.Evaluate(filter, ev))
+	assert.That(b, !es.Evaluate(filter, ev))
 	b.Log("executed", es.executed, "instructions")
 
 	b.ReportAllocs()

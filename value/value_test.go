@@ -155,6 +155,18 @@ func TestValueZeroValue(t *testing.T) {
 	assert.Nil(t, v.AsAny())
 }
 
+func TestSerialize(t *testing.T) {
+	t.Logf("%x", Value{}.Serialize(nil))
+	t.Logf("%x", String("hello").Serialize(nil))
+	t.Logf("%x", Bytes([]byte{1, 2, 3, 4, 5}).Serialize(nil))
+	t.Logf("%x", Int(42).Serialize(nil))
+	t.Logf("%x", Uint(42).Serialize(nil))
+	t.Logf("%x", Duration(5*time.Second).Serialize(nil))
+	t.Logf("%x", Float(3.14).Serialize(nil))
+	t.Logf("%x", Bool(true).Serialize(nil))
+	t.Logf("%x", Timestamp(time.Unix(1, 2)).Serialize(nil))
+}
+
 //
 // benchmarks
 //

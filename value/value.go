@@ -203,3 +203,24 @@ func Equal(left, right Value) bool {
 	}
 	return false
 }
+
+func (v Value) Serialize(buf []byte) []byte {
+	buf = append(buf,
+		byte(v.Kind()),
+		byte(v.data>>56), byte(v.data>>48), byte(v.data>>40), byte(v.data>>32),
+		byte(v.data>>24), byte(v.data>>16), byte(v.data>>8), byte(v.data),
+	)
+
+	if !isSentinel(v.ptr) {
+		switch v.data >> 62 {
+		case 0b01:
+			x, _ := v.String()
+			buf = append(buf, x...)
+		case 0b10:
+			x, _ := v.Bytes()
+			buf = append(buf, x...)
+		}
+	}
+
+	return buf
+}

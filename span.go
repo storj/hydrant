@@ -8,18 +8,30 @@ import (
 	"github.com/zeebo/mwc"
 )
 
+const (
+	sysIdxDuration = iota
+	sysIdxName
+	sysIdxParentId
+	sysIdxSpanId
+	sysIdxStart
+	sysIdxSuccess
+	sysIdxTaskId
+	sysIdxTimestamp
+	sysIdxMax
+)
+
 type Span struct {
 	ctx context.Context
 	sub Submitter
 	ev  Event
-	sys [8]Annotation
+	sys [sysIdxMax]Annotation
 }
 
-func (s *Span) Name() string     { x, _ := s.sys[0].Value.String(); return x }
-func (s *Span) Start() time.Time { x, _ := s.sys[1].Value.Timestamp(); return x }
-func (s *Span) Id() uint64       { x, _ := s.sys[2].Value.Uint(); return x }
-func (s *Span) Parent() uint64   { x, _ := s.sys[3].Value.Uint(); return x }
-func (s *Span) Task() uint64     { x, _ := s.sys[4].Value.Uint(); return x }
+func (s *Span) Name() string     { x, _ := s.sys[sysIdxName].Value.String(); return x }
+func (s *Span) Start() time.Time { x, _ := s.sys[sysIdxStart].Value.Timestamp(); return x }
+func (s *Span) Id() uint64       { x, _ := s.sys[sysIdxSpanId].Value.Uint(); return x }
+func (s *Span) Parent() uint64   { x, _ := s.sys[sysIdxParentId].Value.Uint(); return x }
+func (s *Span) Task() uint64     { x, _ := s.sys[sysIdxTaskId].Value.Uint(); return x }
 
 func (s *Span) Annotate(annotations ...Annotation) {
 	s.ev.User = append(s.ev.User, annotations...)
@@ -31,9 +43,9 @@ func (s *Span) Done(err *error) {
 	}
 
 	now := time.Now()
-	s.sys[5] = Timestamp("timestamp", now)
-	s.sys[6] = Duration("duration", now.Sub(s.Start()))
-	s.sys[7] = Bool("success", err == nil || *err == nil)
+	s.sys[sysIdxTimestamp] = Timestamp("timestamp", now)
+	s.sys[sysIdxDuration] = Duration("duration", now.Sub(s.Start()))
+	s.sys[sysIdxSuccess] = Bool("success", err == nil || *err == nil)
 	s.ev.System = s.sys[:]
 
 	if s.sub != nil {
@@ -71,12 +83,12 @@ func StartRemoteSpanNamed(ctx context.Context, name string, parent, task uint64,
 		ctx: ctx,
 		sub: GetSubmitter(ctx),
 		ev:  Event{User: annotations},
-		sys: [8]Annotation{
-			0: String("name", name),
-			1: Timestamp("start", time.Now()),
-			2: Uint("span_id", id),
-			3: Uint("parent_id", parent),
-			4: Uint("task_id", task),
+		sys: [sysIdxMax]Annotation{
+			sysIdxName:     String("name", name),
+			sysIdxStart:    Timestamp("start", time.Now()),
+			sysIdxSpanId:   Uint("span_id", id),
+			sysIdxParentId: Uint("parent_id", parent),
+			sysIdxTaskId:   Uint("task_id", task),
 		},
 	}
 

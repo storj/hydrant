@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+var DefaultSubmitter Submitter
+
 type submitterKeyType struct{}
 
 type Submitter interface {
@@ -12,13 +14,13 @@ type Submitter interface {
 }
 
 func GetSubmitter(ctx context.Context) (s Submitter) {
-	switch ctx := ctx.(type) {
-	case *contextSpan:
-		s = ctx.sub
-	default:
-		s, _ = ctx.Value(submitterKeyType{}).(Submitter)
+	if cs, ok := ctx.(*contextSpan); ok {
+		return cs.sub
 	}
-	return s
+	if s, ok := ctx.Value(submitterKeyType{}).(Submitter); ok {
+		return s
+	}
+	return DefaultSubmitter
 }
 
 func WithSubmitter(ctx context.Context, s Submitter) context.Context {

@@ -5,7 +5,7 @@ import (
 	"sync"
 	"unique"
 
-	"github.com/zeebo/errs"
+	"github.com/zeebo/errs/v2"
 
 	"storj.io/hydrant"
 	"storj.io/hydrant/config"
@@ -42,7 +42,7 @@ func NewQuery(p *filter.Parser, submitter hydrant.Submitter, cfg config.Query) (
 	var grouper *group.Grouper
 	switch {
 	case len(cfg.GroupBy) > 0 && len(cfg.AggregateOver) > 0:
-		return nil, errs.New("cannot specify both group_by and aggregate_over")
+		return nil, errs.Errorf("cannot specify both group_by and aggregate_over")
 	case len(cfg.GroupBy) > 0:
 		// TODO: support more than raw keys
 		var keys []string

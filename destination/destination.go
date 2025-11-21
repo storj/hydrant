@@ -24,7 +24,7 @@ type Destination struct {
 }
 
 func New(cfg config.Destination, p *filter.Parser) (*Destination, error) {
-	submitter := protocol.NewHTTPSubmitter(cfg.URL)
+	submitter := protocol.NewHTTPSubmitter(cfg.URL, newProcessAnnotations(cfg.GlobalFields))
 
 	queries := make([]*Query, 0, len(cfg.Queries))
 	for i := range cfg.Queries {

@@ -8,7 +8,7 @@ import (
 type submitterKeyType struct{}
 
 type Submitter interface {
-	Submit(Event)
+	Submit(context.Context, Event)
 }
 
 func GetSubmitter(ctx context.Context) (s Submitter) {

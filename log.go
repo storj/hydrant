@@ -14,7 +14,7 @@ func Log(ctx context.Context, message string, annotations ...Annotation) {
 		fn := runtime.FuncForPC(buf[0])
 		file, line := fn.FileLine(buf[0])
 
-		submitter.Submit(Event{
+		submitter.Submit(ctx, Event{
 			System: []Annotation{
 				String("message", message),
 				Timestamp("timestamp", time.Now()),

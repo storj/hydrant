@@ -26,7 +26,7 @@ func (d *Destination) Run(ctx context.Context) {
 	d.Submitter.Run(ctx)
 }
 
-func (d *Destination) Submit(ev hydrant.Event) {
+func (d *Destination) Submit(ctx context.Context, ev hydrant.Event) {
 	for _, query := range d.Config.Queries {
 		// TODO
 		_ = query

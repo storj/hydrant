@@ -136,13 +136,13 @@ func (a *Aggregator) updateDestinations(ctx context.Context, sourceIdx int, dest
 	}
 }
 
-func (a *Aggregator) Submit(ev hydrant.Event) {
+func (a *Aggregator) Submit(ctx context.Context, ev hydrant.Event) {
 	token := a.swap.Acquire()
 	defer token.Release()
 
 	for _, dests := range a.subs[token.Gen()%2] {
 		for _, dest := range dests {
-			dest.dest.Submit(ev)
+			dest.dest.Submit(ctx, ev)
 		}
 	}
 }

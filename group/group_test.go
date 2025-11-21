@@ -1,6 +1,7 @@
 package group
 
 import (
+	"context"
 	"runtime"
 	"slices"
 	"strings"
@@ -67,7 +68,7 @@ func BenchmarkGrouper_Include_SpanByNameSuccess(b *testing.B) {
 
 type eventSubmitter hydrant.Event
 
-func (es *eventSubmitter) Submit(ev hydrant.Event) {
+func (es *eventSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
 	*es = eventSubmitter(ev)
 }
 

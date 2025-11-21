@@ -70,7 +70,7 @@ func (s *HTTPSubmitter) submitBatch(ctx context.Context) {
 	// TODO
 }
 
-func (s *HTTPSubmitter) Submit(ev hydrant.Event) {
+func (s *HTTPSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
 	s.mu.Lock()
 	s.batch = append(s.batch, ev)
 	batchSize := len(s.batch)

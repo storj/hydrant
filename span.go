@@ -49,7 +49,7 @@ func (s *Span) Done(err *error) {
 	s.ev.System = s.sys[:]
 
 	if s.sub != nil {
-		s.sub.Submit(s.ev)
+		s.sub.Submit((*contextSpan)(s), s.ev)
 	}
 }
 

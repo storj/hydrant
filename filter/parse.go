@@ -16,6 +16,7 @@ type Filter struct {
 	vals   []value.Value
 }
 
+// TODO: rename to environment or something
 type Parser struct {
 	funcs []func(*EvalState) bool
 	names map[string]uint32

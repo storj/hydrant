@@ -12,6 +12,7 @@ import (
 	"storj.io/hydrant"
 	"storj.io/hydrant/config"
 	"storj.io/hydrant/destination"
+	"storj.io/hydrant/filter"
 )
 
 const (
@@ -19,10 +20,13 @@ const (
 )
 
 type Aggregator struct {
-	cfgs []config.ConfigSource
-	mu   sync.Mutex
-	subs [2][][]runningDest
-	swap swaparoo.Tracker
+	cfgs   []*config.Source
+	p      *filter.Parser
+	mu     sync.Mutex
+	subs   [2][][]runningDest
+	swap   swaparoo.Tracker
+	once   sync.Once
+	loaded chan struct{}
 }
 
 type runningDest struct {
@@ -33,15 +37,19 @@ type runningDest struct {
 
 var _ hydrant.Submitter = (*Aggregator)(nil)
 
-func NewAggregator(cfgs []config.ConfigSource) *Aggregator {
+func NewAggregator(cfgs []*config.Source, p *filter.Parser) *Aggregator {
 	return &Aggregator{
 		cfgs: cfgs,
+		p:    p,
 		subs: [2][][]runningDest{
 			make([][]runningDest, len(cfgs)),
 			make([][]runningDest, len(cfgs)),
 		},
+		loaded: make(chan struct{}),
 	}
 }
+
+func (a *Aggregator) WaitForFirstLoad() <-chan struct{} { return a.loaded }
 
 func (a *Aggregator) Run(ctx context.Context) {
 	var wg sync.WaitGroup
@@ -58,6 +66,7 @@ func (a *Aggregator) Run(ctx context.Context) {
 				} else {
 					refreshInterval = min(maxInterval, time.Duration(csc.RefreshInterval))
 					a.updateDestinations(ctx, sourceIdx, destinations)
+					a.once.Do(func() { close(a.loaded) })
 				}
 				select {
 				case <-ctx.Done():
@@ -95,7 +104,7 @@ func (a *Aggregator) updateDestinations(ctx context.Context, sourceIdx int, dest
 
 	dests := make([]*destination.Destination, len(destConfigs))
 	for i, destConfig := range destConfigs {
-		dest, err := destination.New(destConfig)
+		dest, err := destination.New(destConfig, a.p)
 		if err != nil {
 			token.Release()
 			return

@@ -27,6 +27,8 @@ func (d Duration) MarshalJSON() ([]byte, error) {
 
 type Expression string
 
+func (e Expression) String() string { return string(e) }
+
 type Query struct {
 	Filter        Expression   `json:"filter"`
 	GroupBy       []Expression `json:"group_by"`

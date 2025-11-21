@@ -3,23 +3,25 @@ package config
 import (
 	"context"
 	"net/http"
+
+	"github.com/zeebo/errs/v2"
 )
 
-type ConfigSourceConfig struct {
+type SourceConfig struct {
 	RefreshInterval Duration `json:"refresh_interval"`
 }
 
-type ConfigSource struct {
+type Source struct {
 	url string
 }
 
-func NewConfigSource(url string) *ConfigSource {
-	return &ConfigSource{
+func NewSource(url string) *Source {
+	return &Source{
 		url: url,
 	}
 }
 
-func (cs *ConfigSource) Load(ctx context.Context) (cfg ConfigSourceConfig, dsts []Destination, err error) {
+func (cs *Source) Load(ctx context.Context) (cfg SourceConfig, dsts []Destination, err error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, cs.url, nil)
 	if err != nil {
 		return cfg, nil, err
@@ -29,6 +31,9 @@ func (cs *ConfigSource) Load(ctx context.Context) (cfg ConfigSourceConfig, dsts 
 		return cfg, nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return cfg, nil, errs.Errorf("unexpected http response %d", resp.StatusCode)
+	}
 
 	cfg, dsts, err = Parse(ctx, resp.Body)
 	if err != nil {

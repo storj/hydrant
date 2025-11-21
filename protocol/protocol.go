@@ -1,8 +1,9 @@
 package protocol
 
 import (
+	"bytes"
 	"context"
-	"io"
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -11,8 +12,8 @@ import (
 )
 
 var (
-	httpBatchSubmit = 30 * time.Second
-	httpBatchMax    = 10_000
+	httpBatchInterval = 3 * time.Second
+	httpBatchMax      = 10_000
 )
 
 type HTTPSubmitter struct {
@@ -31,15 +32,16 @@ func NewHTTPSubmitter(url string) *HTTPSubmitter {
 }
 
 func (s *HTTPSubmitter) Run(ctx context.Context) {
+	nextTick := time.After(jitter(httpBatchInterval))
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-s.trigger:
-			s.submitBatch(ctx)
-		case <-time.After(jitter(httpBatchSubmit)):
-			s.submitBatch(ctx)
+		case <-nextTick:
 		}
+		nextTick = time.After(jitter(httpBatchInterval))
+		s.submitBatch(ctx)
 	}
 }
 
@@ -51,23 +53,28 @@ func (s *HTTPSubmitter) submitBatch(ctx context.Context) {
 		return
 	}
 
-	var reqBody io.Reader
+	var reqBody bytes.Buffer
+	// TODO: actually compress and format in a good way
+	fmt.Fprintf(&reqBody, "%#v", s.batch)
 
 	// TODO: connection pool configuration?
-	req, err := http.NewRequestWithContext(ctx, s.url, http.MethodPost, reqBody)
+	req, err := http.NewRequestWithContext(ctx, s.url, http.MethodPost, &reqBody)
 	if err != nil {
 		// TODO: log dropped packets? try again?
+		s.batch = s.batch[:0]
 		return
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		// TODO: log dropped packets? try again?
+		s.batch = s.batch[:0]
 		return
 	}
 	defer resp.Body.Close()
 
-	// TODO
+	// TODO: check http status code
+	s.batch = s.batch[:0]
 }
 
 func (s *HTTPSubmitter) Submit(ctx context.Context, ev hydrant.Event) {

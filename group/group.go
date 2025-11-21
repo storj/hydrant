@@ -15,7 +15,8 @@ type Grouper struct {
 	keys  []string
 	hints [3][]atomic.Uint32
 	set   map[string]struct{}
-	fn    func(hydrant.Event) unique.Handle[string]
+	group func(hydrant.Event) unique.Handle[string]
+	anns  func(hydrant.Event) []hydrant.Annotation
 }
 
 func NewGrouper(keys []string, exclude bool) *Grouper {
@@ -29,15 +30,17 @@ func NewGrouper(keys []string, exclude bool) *Grouper {
 		set: maps.Collect(seq2seq2(slices.Values(keys), struct{}{})),
 	}
 	if exclude {
-		g.fn = g.groupExclude
+		g.group = g.groupExclude
+		g.anns = g.annsExclude
 	} else {
-		g.fn = g.groupInclude
+		g.group = g.groupInclude
+		g.anns = g.annsInclude
 	}
 	return g
 }
 
 func (g *Grouper) Group(ev hydrant.Event) unique.Handle[string] {
-	return g.fn(ev)
+	return g.group(ev)
 }
 
 func (g *Grouper) groupInclude(ev hydrant.Event) unique.Handle[string] {
@@ -90,6 +93,54 @@ func (g *Grouper) groupExclude(ev hydrant.Event) unique.Handle[string] {
 	}
 
 	return unique.Make(string(buf))
+}
+
+func (g *Grouper) Annotations(ev hydrant.Event) []hydrant.Annotation {
+	return g.anns(ev)
+}
+
+func (g *Grouper) annsInclude(ev hydrant.Event) (out []hydrant.Annotation) {
+	lookup := func(anns []hydrant.Annotation, class int, i int, key string) bool {
+		if h := g.hints[class][i].Load(); h != 0 {
+			h >>= 1
+			if h < uint32(len(anns)) && anns[h].Key == key {
+				out = append(out, anns[h])
+				return true
+			}
+		}
+
+		for j := len(anns) - 1; j >= 0; j-- {
+			if anns[j].Key == key {
+				out = append(out, anns[j])
+				g.hints[class][i].Store(uint32(j)<<1 | 1)
+				return true
+			}
+		}
+
+		return false
+	}
+
+	for i, key := range g.keys {
+		_ = lookup(ev.System, 0, i, key) || lookup(ev.User, 1, i, key)
+	}
+
+	return out
+}
+
+func (g *Grouper) annsExclude(ev hydrant.Event) (out []hydrant.Annotation) {
+	for i := range ev.System {
+		if _, ok := g.set[ev.System[i].Key]; !ok {
+			out = append(out, ev.System[i])
+		}
+	}
+
+	for i := range ev.User {
+		if _, ok := g.set[ev.User[i].Key]; !ok {
+			out = append(out, ev.User[i])
+		}
+	}
+
+	return out
 }
 
 func appendString(buf []byte, s string) []byte {

@@ -1,14 +1,11 @@
 package aggregator
 
 import (
-	"context"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"sync"
 	"testing"
-	"time"
 
 	"storj.io/hydrant"
 	"storj.io/hydrant/config"
@@ -16,6 +13,8 @@ import (
 )
 
 func TestWireEverythingUp(t *testing.T) {
+	results := make(chan string)
+
 	var destinationURL string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -23,8 +22,8 @@ func TestWireEverythingUp(t *testing.T) {
 			fmt.Fprintf(w, `
 			{"destinations": [{
 				"url": "%s",
-			    "aggregation_interval": "1m",
-			    "queries": [{ "filter": "has(message)" }]
+				"aggregation_interval": "1s",
+				"queries": [{ "filter": "has(message)" }]
 			}]}`, destinationURL)
 		case http.MethodPost:
 			data, err := io.ReadAll(r.Body)
@@ -33,7 +32,7 @@ func TestWireEverythingUp(t *testing.T) {
 				t.Fail()
 				return
 			}
-			t.Log(string(data))
+			results <- string(data)
 		}
 	}))
 	defer srv.Close()
@@ -43,19 +42,11 @@ func TestWireEverythingUp(t *testing.T) {
 	filter.SetBuiltins(p)
 
 	a := NewAggregator([]*config.Source{config.NewSource(srv.URL)}, p)
-
-	ctx := context.Background()
-
-	ctxTimeout, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	var wg sync.WaitGroup
-	wg.Go(func() { a.Run(ctxTimeout) })
+	go a.Run(t.Context())
 
 	<-a.WaitForFirstLoad()
 
-	ctx = hydrant.WithSubmitter(ctx, a)
+	hydrant.Log(hydrant.WithSubmitter(t.Context(), a), "hello")
 
-	hydrant.Log(ctx, "hello")
-
-	wg.Wait()
+	t.Log(<-results)
 }

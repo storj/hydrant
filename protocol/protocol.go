@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	httpBatchInterval = 3 * time.Second
+	httpBatchInterval = 30 * time.Second
 	httpBatchMax      = 10_000
 )
 
@@ -58,7 +58,7 @@ func (s *HTTPSubmitter) submitBatch(ctx context.Context) {
 	fmt.Fprintf(&reqBody, "%#v", s.batch)
 
 	// TODO: connection pool configuration?
-	req, err := http.NewRequestWithContext(ctx, s.url, http.MethodPost, &reqBody)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.url, &reqBody)
 	if err != nil {
 		// TODO: log dropped packets? try again?
 		s.batch = s.batch[:0]

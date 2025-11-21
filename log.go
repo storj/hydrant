@@ -16,11 +16,11 @@ func Log(ctx context.Context, message string, annotations ...Annotation) {
 
 		submitter.Submit(ctx, Event{
 			System: []Annotation{
+				String("file", file),
+				String("func", fn.Name()),
+				Int("line", int64(line)),
 				String("message", message),
 				Timestamp("timestamp", time.Now()),
-				String("func", fn.Name()),
-				String("file", file),
-				Int("line", int64(line)),
 			},
 			User: annotations,
 		})

@@ -17,6 +17,7 @@ import (
 
 const (
 	maxInterval = 24 * time.Hour
+	minInterval = time.Minute
 )
 
 type Aggregator struct {
@@ -64,7 +65,9 @@ func (a *Aggregator) Run(ctx context.Context) {
 				if err != nil {
 					// TODO: log this error?
 				} else {
-					refreshInterval = min(maxInterval, time.Duration(csc.RefreshInterval))
+					refreshInterval = time.Duration(csc.RefreshInterval)
+					refreshInterval = min(refreshInterval, maxInterval)
+					refreshInterval = max(refreshInterval, minInterval)
 					a.updateDestinations(ctx, sourceIdx, destinations)
 					a.once.Do(func() { close(a.loaded) })
 				}

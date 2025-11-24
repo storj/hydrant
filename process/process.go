@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"storj.io/hydrant"
-	"storj.io/hydrant/value"
 )
 
 var (
@@ -15,12 +14,7 @@ var (
 
 // MustRegisterProcessAnnotations is run on the default store at init.
 func MustRegisterProcessAnnotations(s *Store) {
-	s.MustRegisterAnnotationThunk(AnnotationThunk{
-		Key: "proc.uptime",
-		Value: func() (value.Value, bool) {
-			return value.Duration(time.Since(processStart)), true
-		},
-	})
+	s.MustRegisterAnnotation(hydrant.Timestamp("proc.starttime", processStart))
 }
 
 // MustRegisterOSAnnotations is run on the default store at init.

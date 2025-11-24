@@ -13,6 +13,7 @@ import (
 	"storj.io/hydrant/config"
 	"storj.io/hydrant/destination"
 	"storj.io/hydrant/filter"
+	"storj.io/hydrant/process"
 )
 
 const (
@@ -107,7 +108,7 @@ func (a *Aggregator) updateDestinations(ctx context.Context, sourceIdx int, dest
 
 	dests := make([]*destination.Destination, len(destConfigs))
 	for i, destConfig := range destConfigs {
-		dest, err := destination.New(destConfig, a.p)
+		dest, err := destination.New(destConfig, a.p, process.GetStore(ctx))
 		if err != nil {
 			token.Release()
 			return

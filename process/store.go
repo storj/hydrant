@@ -4,18 +4,11 @@ import (
 	"fmt"
 
 	"storj.io/hydrant"
-	"storj.io/hydrant/value"
 )
 
-type AnnotationThunk struct {
-	Key   string
-	Value func() (_ value.Value, ok bool)
-}
-
 type Store struct {
-	reserved         map[string]bool
-	annotations      []hydrant.Annotation
-	annotationThunks []AnnotationThunk
+	reserved    map[string]bool
+	annotations []hydrant.Annotation
 }
 
 func NewStore() *Store {
@@ -45,27 +38,8 @@ func (s *Store) MustRegisterAnnotation(a ...hydrant.Annotation) {
 	s.annotations = append(s.annotations, a...)
 }
 
-func (s *Store) MustRegisterAnnotationThunk(a ...AnnotationThunk) {
-	for i := range a {
-		if s.reserved[a[i].Key] {
-			panic(fmt.Sprintf("%q is reserved", a[i].Key))
-		}
-	}
-	s.annotationThunks = append(s.annotationThunks, a...)
-}
-
 func (s *Store) Annotations() []hydrant.Annotation {
-	rv := make([]hydrant.Annotation, 0, len(s.annotations)+len(s.annotationThunks))
-	rv = append(rv, s.annotations...)
-	for _, a := range s.annotationThunks {
-		if v, ok := a.Value(); ok {
-			rv = append(rv, hydrant.Annotation{
-				Key:   a.Key,
-				Value: v,
-			})
-		}
-	}
-	return rv
+	return s.annotations
 }
 
 var (
@@ -74,8 +48,4 @@ var (
 
 func MustRegisterAnnotation(a ...hydrant.Annotation) {
 	DefaultStore.MustRegisterAnnotation(a...)
-}
-
-func MustRegisterAnnotationThunk(a ...AnnotationThunk) {
-	DefaultStore.MustRegisterAnnotationThunk(a...)
 }

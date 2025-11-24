@@ -19,14 +19,14 @@ var (
 
 type HTTPSubmitter struct {
 	url                string
-	processAnnotations TODOType
+	processAnnotations *process.Selected
 
 	mu      sync.Mutex
 	batch   []hydrant.Event
 	trigger chan struct{}
 }
 
-func NewHTTPSubmitter(url string, processAnnotations TODOType) *HTTPSubmitter {
+func NewHTTPSubmitter(url string, processAnnotations *process.Selected) *HTTPSubmitter {
 	return &HTTPSubmitter{
 		url:                url,
 		processAnnotations: processAnnotations,
@@ -59,7 +59,7 @@ func (s *HTTPSubmitter) submitBatch(ctx context.Context) {
 	var reqBody bytes.Buffer
 	// TODO: actually compress and format in a good way
 	fmt.Fprintf(&reqBody, "%#v", s.batch)
-	fmt.Fprintf(&reqBody, "%#v", s.processAnnotations.Requested(process.Annotations(ctx)))
+	fmt.Fprintf(&reqBody, "%#v", s.processAnnotations.Annotations())
 
 	// TODO: connection pool configuration?
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.url, &reqBody)

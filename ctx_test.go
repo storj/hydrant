@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"storj.io/hydrant"
+	"storj.io/hydrant/process"
 	"storj.io/hydrant/protocol"
 )
 
@@ -12,8 +13,10 @@ func TestDefaultSubmitter(t *testing.T) {
 	originalDefault := hydrant.DefaultSubmitter
 	defer func() { hydrant.DefaultSubmitter = originalDefault }()
 
-	hydrant.DefaultSubmitter = protocol.NewHTTPSubmitter("http://localhost:1/")
-	submitter2 := protocol.NewHTTPSubmitter("http://localhost:2/")
+	hydrant.DefaultSubmitter = protocol.NewHTTPSubmitter("http://localhost:1/",
+		process.NewSelected(process.DefaultStore, nil))
+	submitter2 := protocol.NewHTTPSubmitter("http://localhost:2/",
+		process.NewSelected(process.DefaultStore, nil))
 
 	// make sure by default the submitter is the default submitter
 	if hydrant.GetSubmitter(context.Background()) != hydrant.DefaultSubmitter {

@@ -8,6 +8,7 @@ import (
 	"storj.io/hydrant"
 	"storj.io/hydrant/config"
 	"storj.io/hydrant/filter"
+	"storj.io/hydrant/process"
 	"storj.io/hydrant/protocol"
 )
 
@@ -23,8 +24,9 @@ type Destination struct {
 	submitter *protocol.HTTPSubmitter
 }
 
-func New(cfg config.Destination, p *filter.Parser) (*Destination, error) {
-	submitter := protocol.NewHTTPSubmitter(cfg.URL, newProcessAnnotations(cfg.GlobalFields))
+func New(cfg config.Destination, p *filter.Parser, s *process.Store) (
+	*Destination, error) {
+	submitter := protocol.NewHTTPSubmitter(cfg.URL, process.NewSelected(s, cfg.GlobalFields))
 
 	queries := make([]*Query, 0, len(cfg.Queries))
 	for i := range cfg.Queries {

@@ -13,7 +13,7 @@ const (
 	sysIdxName
 	sysIdxParentId
 	sysIdxSpanId
-	sysIdxStart
+	sysIdxStartTime
 	sysIdxSuccess
 	sysIdxTaskId
 	sysIdxTimestamp
@@ -27,11 +27,11 @@ type Span struct {
 	sys [sysIdxMax]Annotation
 }
 
-func (s *Span) Name() string     { x, _ := s.sys[sysIdxName].Value.String(); return x }
-func (s *Span) Start() time.Time { x, _ := s.sys[sysIdxStart].Value.Timestamp(); return x }
-func (s *Span) Id() uint64       { x, _ := s.sys[sysIdxSpanId].Value.Uint(); return x }
-func (s *Span) Parent() uint64   { x, _ := s.sys[sysIdxParentId].Value.Uint(); return x }
-func (s *Span) Task() uint64     { x, _ := s.sys[sysIdxTaskId].Value.Uint(); return x }
+func (s *Span) Name() string         { x, _ := s.sys[sysIdxName].Value.String(); return x }
+func (s *Span) StartTime() time.Time { x, _ := s.sys[sysIdxStartTime].Value.Timestamp(); return x }
+func (s *Span) Id() uint64           { x, _ := s.sys[sysIdxSpanId].Value.Uint(); return x }
+func (s *Span) Parent() uint64       { x, _ := s.sys[sysIdxParentId].Value.Uint(); return x }
+func (s *Span) Task() uint64         { x, _ := s.sys[sysIdxTaskId].Value.Uint(); return x }
 
 func (s *Span) Annotate(annotations ...Annotation) {
 	s.ev.User = append(s.ev.User, annotations...)
@@ -44,7 +44,7 @@ func (s *Span) Done(err *error) {
 
 	now := time.Now()
 	s.sys[sysIdxTimestamp] = Timestamp("timestamp", now)
-	s.sys[sysIdxDuration] = Duration("duration", now.Sub(s.Start()))
+	s.sys[sysIdxDuration] = Duration("duration", now.Sub(s.StartTime()))
 	s.sys[sysIdxSuccess] = Bool("success", err == nil || *err == nil)
 	s.ev.System = s.sys[:]
 
@@ -54,9 +54,9 @@ func (s *Span) Done(err *error) {
 }
 
 func StartSpan(ctx context.Context, annotations ...Annotation) (context.Context, *Span) {
-	var buf [1]uintptr
-	runtime.Callers(2, buf[:])
-	return StartSpanNamed(ctx, runtime.FuncForPC(buf[0]).Name(), annotations...)
+	var pcs [1]uintptr
+	runtime.Callers(2, pcs[:])
+	return StartSpanNamed(ctx, runtime.FuncForPC(pcs[0]).Name(), annotations...)
 }
 
 func StartSpanNamed(ctx context.Context, name string, annotations ...Annotation) (context.Context, *Span) {
@@ -84,11 +84,11 @@ func StartRemoteSpanNamed(ctx context.Context, name string, parent, task uint64,
 		sub: GetSubmitter(ctx),
 		ev:  Event{User: annotations},
 		sys: [sysIdxMax]Annotation{
-			sysIdxName:     String("name", name),
-			sysIdxStart:    Timestamp("start", time.Now()),
-			sysIdxSpanId:   Uint("span_id", id),
-			sysIdxParentId: Uint("parent_id", parent),
-			sysIdxTaskId:   Uint("task_id", task),
+			sysIdxName:      String("name", name),
+			sysIdxStartTime: Timestamp("start", time.Now()),
+			sysIdxSpanId:    Uint("span_id", id),
+			sysIdxParentId:  Uint("parent_id", parent),
+			sysIdxTaskId:    Uint("task_id", task),
 		},
 	}
 

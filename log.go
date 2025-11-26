@@ -8,21 +8,31 @@ import (
 
 func Log(ctx context.Context, message string, annotations ...Annotation) {
 	if submitter := GetSubmitter(ctx); submitter != nil {
-		var buf [1]uintptr
-		runtime.Callers(2, buf[:])
+		var pcs [1]uintptr
+		runtime.Callers(2, pcs[:])
 
-		fn := runtime.FuncForPC(buf[0])
-		file, line := fn.FileLine(buf[0])
+		fn := runtime.FuncForPC(pcs[0])
+		file, line := fn.FileLine(pcs[0])
+
+		sys := (&[7]Annotation{
+			0: String("file", file),
+			1: String("func", fn.Name()),
+			2: Int("line", int64(line)),
+			3: String("message", message),
+		})[:4]
+
+		if span := GetSpan(ctx); span != nil {
+			sys = append(sys,
+				Uint("span_id", span.Id()),
+				Uint("task_id", span.Task()),
+			)
+		}
+
+		sys = append(sys, Timestamp("timestamp", time.Now()))
 
 		submitter.Submit(ctx, Event{
-			System: []Annotation{
-				String("file", file),
-				String("func", fn.Name()),
-				Int("line", int64(line)),
-				String("message", message),
-				Timestamp("timestamp", time.Now()),
-			},
-			User: annotations,
+			System: sys,
+			User:   annotations,
 		})
 	}
 }

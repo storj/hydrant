@@ -14,6 +14,15 @@ func TestLog(t *testing.T) {
 		Int("user_int", 42),
 	)
 
+	ctx, span := StartSpan(ctx)
+
+	Log(ctx, "span message",
+		String("user_key", "other_value"),
+		Int("user_int", 12),
+	)
+
+	span.Done(nil)
+
 	for _, ev := range bs {
 		t.Logf("%+v", ev)
 	}

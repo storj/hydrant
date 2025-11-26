@@ -23,8 +23,8 @@ func Log(ctx context.Context, message string, annotations ...Annotation) {
 
 		if span := GetSpan(ctx); span != nil {
 			sys = append(sys,
-				Uint("span_id", span.Id()),
-				Uint("task_id", span.Task()),
+				Identifier("span_id", span.Id()),
+				Identifier("task_id", span.Task()),
 			)
 		}
 

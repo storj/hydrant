@@ -86,9 +86,9 @@ func StartRemoteSpanNamed(ctx context.Context, name string, parent, task uint64,
 		sys: [sysIdxMax]Annotation{
 			sysIdxName:      String("name", name),
 			sysIdxStartTime: Timestamp("start", time.Now()),
-			sysIdxSpanId:    Uint("span_id", id),
-			sysIdxParentId:  Uint("parent_id", parent),
-			sysIdxTaskId:    Uint("task_id", task),
+			sysIdxSpanId:    Identifier("span_id", id),
+			sysIdxParentId:  Identifier("parent_id", parent),
+			sysIdxTaskId:    Identifier("task_id", task),
 		},
 	}
 

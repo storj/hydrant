@@ -36,6 +36,7 @@ func TestKind(t *testing.T) {
 	assert.Equal(t, Float(3.14).Kind(), KindFloat)
 	assert.Equal(t, Bool(true).Kind(), KindBool)
 	assert.Equal(t, Timestamp(time.Now()).Kind(), KindTimestamp)
+	assert.Equal(t, Identifier(65).Kind(), KindIdentifier)
 }
 
 func TestValue(t *testing.T) {
@@ -118,6 +119,14 @@ func TestValue(t *testing.T) {
 			time.Now().Add(-100*time.Hour),
 		)
 	})
+
+	t.Run("identifier", func(t *testing.T) {
+		runValueTest(t, Identifier, Value.Identifier,
+			uint64(42),
+			uint64(0),
+			uint64(math.MaxUint64),
+		)
+	})
 }
 
 func TestValueAsAnyOptimizedTypes(t *testing.T) {
@@ -136,6 +145,7 @@ func TestValueAsAnyOptimizedTypes(t *testing.T) {
 	t.Run("float", func(t *testing.T) { assertAsAnyType(t, Float(3.14), 3.14) })
 	t.Run("bool", func(t *testing.T) { assertAsAnyType(t, Bool(true), true) })
 	t.Run("timestamp", func(t *testing.T) { assertAsAnyType(t, Timestamp(time.Unix(1, 2)), time.Unix(1, 2)) })
+	t.Run("identifier", func(t *testing.T) { assertAsAnyType(t, Identifier(65), uint64(65)) })
 }
 
 func TestValueZeroValue(t *testing.T) {
@@ -150,6 +160,7 @@ func TestValueZeroValue(t *testing.T) {
 	assertNotType(t, v, Value.Float)
 	assertNotType(t, v, Value.Bool)
 	assertNotType(t, v, Value.Timestamp)
+	assertNotType(t, v, Value.Identifier)
 
 	// AsAny should return nil interface
 	assert.Nil(t, v.AsAny())
@@ -165,6 +176,7 @@ func TestSerialize(t *testing.T) {
 	t.Logf("%x", Float(3.14).Serialize(nil))
 	t.Logf("%x", Bool(true).Serialize(nil))
 	t.Logf("%x", Timestamp(time.Unix(1, 2)).Serialize(nil))
+	t.Logf("%x", Identifier(64).Serialize(nil))
 }
 
 //
@@ -180,6 +192,7 @@ func BenchmarkValue(b *testing.B) {
 	b.Run("duration", func(b *testing.B) { benchmarkType(b, 5*time.Second, Duration, Value.Duration) })
 	b.Run("bool", func(b *testing.B) { benchmarkType(b, true, Bool, Value.Bool) })
 	b.Run("timestamp", func(b *testing.B) { benchmarkType(b, time.Now(), Timestamp, Value.Timestamp) })
+	b.Run("identifier", func(b *testing.B) { benchmarkType(b, uint64(65), Identifier, Value.Identifier) })
 }
 
 func BenchmarkValueAsAnyFromPrimitive(b *testing.B) {
@@ -199,6 +212,7 @@ func BenchmarkValueAsAnyFromPrimitive(b *testing.B) {
 	b.Run("duration", func(b *testing.B) { run(b, Duration(5*time.Second)) })
 	b.Run("bool", func(b *testing.B) { run(b, Bool(true)) })
 	b.Run("timestamp", func(b *testing.B) { run(b, Timestamp(time.Now())) })
+	b.Run("identifier", func(b *testing.B) { run(b, Identifier(4200)) })
 }
 
 //

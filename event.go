@@ -52,3 +52,7 @@ func Bool(key string, val bool) Annotation {
 func Timestamp(key string, val time.Time) Annotation {
 	return Annotation{Key: key, Value: value.Timestamp(val)}
 }
+
+func Identifier(key string, val uint64) Annotation {
+	return Annotation{Key: key, Value: value.Identifier(val)}
+}

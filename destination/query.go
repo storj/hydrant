@@ -2,10 +2,11 @@ package destination
 
 import (
 	"context"
+	"maps"
+	"slices"
+	"strings"
 	"sync"
 	"unique"
-
-	"github.com/zeebo/errs/v2"
 
 	"github.com/histdb/histdb/flathist"
 	"github.com/histdb/histdb/rwutils"
@@ -20,8 +21,10 @@ import (
 var evalPool = sync.Pool{New: func() any { return new(filter.EvalState) }}
 
 type aggregate struct {
-	group []hydrant.Annotation
-	aggs  map[string]flathist.H
+	group    []hydrant.Annotation
+	groupSet map[string]struct{}
+	dists    map[string]flathist.H
+	invalid  map[string]struct{}
 }
 
 type Query struct {
@@ -29,7 +32,6 @@ type Query struct {
 	grouper   *group.Grouper
 	submitter hydrant.Submitter
 	store     *flathist.S
-	aggs      []string
 
 	mu     sync.Mutex
 	groups map[unique.Handle[string]]*aggregate
@@ -44,30 +46,12 @@ func NewQuery(p *filter.Parser, submitter hydrant.Submitter, store *flathist.S, 
 	}
 
 	var grouper *group.Grouper
-	switch {
-	case len(cfg.GroupBy) > 0 && len(cfg.AggregateOver) > 0:
-		return nil, errs.Errorf("cannot specify both group_by and aggregate_over")
-	case len(cfg.GroupBy) > 0:
-		// TODO: support more than raw keys
+	if len(cfg.GroupBy) > 0 {
 		var keys []string
 		for _, expr := range cfg.GroupBy {
 			keys = append(keys, expr.String())
 		}
-		grouper = group.NewGrouper(keys, false)
-	case len(cfg.AggregateOver) > 0:
-		// TODO: support more than raw keys
-		var keys []string
-		for _, expr := range cfg.AggregateOver {
-			keys = append(keys, expr.String())
-		}
-		grouper = group.NewGrouper(keys, true)
-	default:
-		// no grouping
-	}
-
-	aggs := make([]string, len(cfg.Aggregates))
-	for i, agg := range cfg.Aggregates {
-		aggs[i] = agg.String()
+		grouper = group.NewGrouper(keys)
 	}
 
 	return &Query{
@@ -75,7 +59,6 @@ func NewQuery(p *filter.Parser, submitter hydrant.Submitter, store *flathist.S, 
 		grouper:   grouper,
 		submitter: submitter,
 		store:     store,
-		aggs:      aggs,
 		groups:    make(map[unique.Handle[string]]*aggregate),
 	}, nil
 }
@@ -97,61 +80,90 @@ func (q *Query) Submit(ctx context.Context, ev hydrant.Event) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	handle := q.grouper.Group(ev)
-	agg := q.groups[handle]
+	groupKey := q.grouper.Group(ev)
+
+	agg := q.groups[groupKey]
 	if agg == nil {
-		agg = &aggregate{
-			group: q.grouper.Annotations(ev),
-			aggs:  make(map[string]flathist.H),
+		group := q.grouper.Annotations(ev)
+		groupSet := make(map[string]struct{}, len(group))
+		for _, ann := range group {
+			groupSet[ann.Key] = struct{}{}
 		}
-		q.groups[handle] = agg
+
+		agg = &aggregate{
+			group:    group,
+			groupSet: groupSet,
+			dists:    make(map[string]flathist.H),
+			invalid:  make(map[string]struct{}),
+		}
+
+		q.groups[groupKey] = agg
 	}
 
-	for _, key := range q.aggs {
-		val, ok := lookup(key, ev.System)
-		if !ok {
-			val, ok = lookup(key, ev.User)
-			if !ok {
+	includeAnnotations := func(agg *aggregate, anns []hydrant.Annotation) {
+		for _, ann := range anns {
+			if _, ok := agg.groupSet[ann.Key]; ok {
 				continue
 			}
-		}
 
-		into, ok := agg.aggs[key]
-		if !ok {
-			into = q.store.New()
-			agg.aggs[key] = into
-		}
+			datum, ok := distributionize(ann.Value)
+			if !ok {
+				agg.invalid[ann.Key] = struct{}{}
+				continue
+			}
 
-		switch val.Kind() {
-		case value.KindInt:
-			x, _ := val.Int()
-			q.store.Observe(into, float32(x))
-		case value.KindUint:
-			x, _ := val.Uint()
-			q.store.Observe(into, float32(x))
-		case value.KindDuration:
-			x, _ := val.Duration()
-			q.store.Observe(into, float32(x.Seconds()))
-		case value.KindFloat:
-			x, _ := val.Float()
-			q.store.Observe(into, float32(x))
+			into, ok := agg.dists[ann.Key]
+			if !ok {
+				into = q.store.New()
+				agg.dists[ann.Key] = into
+			}
+
+			q.store.Observe(into, datum)
 		}
 	}
+
+	includeAnnotations(agg, ev.System)
+	includeAnnotations(agg, ev.User)
+}
+
+func distributionize(v value.Value) (float32, bool) {
+	switch v.Kind() {
+	case value.KindInt:
+		x, _ := v.Int()
+		return float32(x), true
+	case value.KindUint:
+		x, _ := v.Uint()
+		return float32(x), true
+	case value.KindDuration:
+		x, _ := v.Duration()
+		return float32(x.Seconds()), true
+	case value.KindTimestamp:
+		x, _ := v.Timestamp()
+		return float32(x.Unix()), true
+	case value.KindFloat:
+		x, _ := v.Float()
+		return float32(x), true
+	}
+	return 0, false
 }
 
 func (q *Query) Flush(ctx context.Context) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	for _, anns := range q.groups {
-		user := make([]hydrant.Annotation, 0, len(q.aggs))
-		for key, h := range anns.aggs {
+	for _, agg := range q.groups {
+		var user []hydrant.Annotation
+		for key, h := range agg.dists {
 			var w rwutils.W
 			flathist.AppendTo(q.store, h, &w)
 			user = append(user, hydrant.Bytes(key, w.Done().Prefix()))
 		}
+		if len(agg.invalid) > 0 {
+			agg.group = append(agg.group, hydrant.String("invalid",
+				strings.Join(slices.Collect(maps.Keys(agg.invalid)), ", ")))
+		}
 		q.submitter.Submit(ctx, hydrant.Event{
-			System: anns.group,
+			System: agg.group,
 			User:   user,
 		})
 	}

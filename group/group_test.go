@@ -11,7 +11,7 @@ import (
 )
 
 func TestGrouperInclude(t *testing.T) {
-	g := NewGrouper([]string{"key1", "key2"}, false)
+	g := NewGrouper([]string{"key1", "key2"})
 
 	h1 := g.Group(hydrant.Event{
 		System: []hydrant.Annotation{
@@ -54,7 +54,7 @@ func BenchmarkGrouper_Include_SpanByNameSuccess(b *testing.B) {
 	slices.SortStableFunc(ev.System, compareAnnotations)
 	slices.SortStableFunc(ev.User, compareAnnotations)
 
-	g := NewGrouper([]string{"name", "success"}, false)
+	g := NewGrouper([]string{"name", "success"})
 	h := g.Group(ev)
 
 	b.ReportAllocs()

@@ -30,10 +30,8 @@ type Expression string
 func (e Expression) String() string { return string(e) }
 
 type Query struct {
-	Filter        Expression   `json:"filter"`
-	GroupBy       []Expression `json:"group_by"`
-	AggregateOver []Expression `json:"aggregate_over"`
-	Aggregates    []Expression `json:"aggregates"`
+	Filter  Expression   `json:"filter"`
+	GroupBy []Expression `json:"group_by"`
 }
 
 type Destination struct {

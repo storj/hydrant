@@ -20,9 +20,8 @@ func TestQuery(t *testing.T) {
 	var store flathist.S
 
 	q, err := NewQuery(p, &bs, &store, config.Query{
-		Filter:     config.Expression("eq(key(name), test) && lt(key(dur), 1s)"),
-		GroupBy:    []config.Expression{"group"},
-		Aggregates: []config.Expression{"dur", "count"},
+		Filter:  config.Expression("eq(key(name), test) && lt(key(dur), 1s)"),
+		GroupBy: []config.Expression{"group", "name"},
 	})
 	assert.NoError(t, err)
 

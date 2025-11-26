@@ -6,7 +6,7 @@ import (
 	"unsafe"
 )
 
-var sentinels [6]byte
+var sentinels [7]byte
 
 func isSentinel(ptr *byte) bool {
 	return uintptr(unsafe.Pointer(ptr))-
@@ -140,6 +140,20 @@ func (v Value) Timestamp() (t time.Time, ok bool) {
 	return t, ok
 }
 
+func Identifier(x uint64) Value {
+	return Value{
+		ptr:  &sentinels[6],
+		data: x,
+	}
+}
+
+func (v Value) Identifier() (x uint64, ok bool) {
+	if ok = v.ptr == &sentinels[6]; ok {
+		x = v.data
+	}
+	return x, ok
+}
+
 func (v Value) AsAny() (x any) {
 	switch v.ptr {
 	case &sentinels[0]:
@@ -154,6 +168,8 @@ func (v Value) AsAny() (x any) {
 		x, _ = v.Bool()
 	case &sentinels[5]:
 		x, _ = v.Timestamp()
+	case &sentinels[6]:
+		x, _ = v.Identifier()
 	default:
 		switch v.data >> 62 {
 		case 0b01:
@@ -168,15 +184,16 @@ func (v Value) AsAny() (x any) {
 type Kind uint8
 
 const (
-	KindEmpty     Kind = 0
-	KindString    Kind = 1
-	KindBytes     Kind = 2
-	KindInt       Kind = 3
-	KindUint      Kind = 4
-	KindDuration  Kind = 5
-	KindFloat     Kind = 6
-	KindBool      Kind = 7
-	KindTimestamp Kind = 8
+	KindEmpty      Kind = 0
+	KindString     Kind = 1
+	KindBytes      Kind = 2
+	KindInt        Kind = 3
+	KindUint       Kind = 4
+	KindDuration   Kind = 5
+	KindFloat      Kind = 6
+	KindBool       Kind = 7
+	KindTimestamp  Kind = 8
+	KindIdentifier Kind = 9
 )
 
 func (v Value) Kind() Kind {

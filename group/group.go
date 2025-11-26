@@ -15,11 +15,9 @@ type Grouper struct {
 	keys  []string
 	hints [3][]atomic.Uint32
 	set   map[string]struct{}
-	group func(hydrant.Event) unique.Handle[string]
-	anns  func(hydrant.Event) []hydrant.Annotation
 }
 
-func NewGrouper(keys []string, exclude bool) *Grouper {
+func NewGrouper(keys []string) *Grouper {
 	g := &Grouper{
 		keys: slices.Sorted(slices.Values(keys)),
 		hints: [3][]atomic.Uint32{
@@ -29,13 +27,6 @@ func NewGrouper(keys []string, exclude bool) *Grouper {
 		},
 		set: maps.Collect(seq2seq2(slices.Values(keys), struct{}{})),
 	}
-	if exclude {
-		g.group = g.groupExclude
-		g.anns = g.annsExclude
-	} else {
-		g.group = g.groupInclude
-		g.anns = g.annsInclude
-	}
 	return g
 }
 
@@ -43,7 +34,7 @@ func (g *Grouper) Group(ev hydrant.Event) unique.Handle[string] {
 	return g.group(ev)
 }
 
-func (g *Grouper) groupInclude(ev hydrant.Event) unique.Handle[string] {
+func (g *Grouper) group(ev hydrant.Event) unique.Handle[string] {
 	buf := make([]byte, 0, 256)
 
 	lookup := func(anns []hydrant.Annotation, class int, i int, key string) bool {
@@ -75,31 +66,11 @@ func (g *Grouper) groupInclude(ev hydrant.Event) unique.Handle[string] {
 	return unique.Make(string(buf))
 }
 
-func (g *Grouper) groupExclude(ev hydrant.Event) unique.Handle[string] {
-	buf := make([]byte, 0, 256)
-
-	for i := range ev.System {
-		if _, ok := g.set[ev.System[i].Key]; !ok {
-			buf = appendString(buf, ev.System[i].Key)
-			buf = ev.System[i].Value.Serialize(buf)
-		}
-	}
-
-	for i := range ev.User {
-		if _, ok := g.set[ev.User[i].Key]; !ok {
-			buf = appendString(buf, ev.User[i].Key)
-			buf = ev.User[i].Value.Serialize(buf)
-		}
-	}
-
-	return unique.Make(string(buf))
-}
-
 func (g *Grouper) Annotations(ev hydrant.Event) []hydrant.Annotation {
 	return g.anns(ev)
 }
 
-func (g *Grouper) annsInclude(ev hydrant.Event) (out []hydrant.Annotation) {
+func (g *Grouper) anns(ev hydrant.Event) (out []hydrant.Annotation) {
 	lookup := func(anns []hydrant.Annotation, class int, i int, key string) bool {
 		if h := g.hints[class][i].Load(); h != 0 {
 			h >>= 1
@@ -122,22 +93,6 @@ func (g *Grouper) annsInclude(ev hydrant.Event) (out []hydrant.Annotation) {
 
 	for i, key := range g.keys {
 		_ = lookup(ev.System, 0, i, key) || lookup(ev.User, 1, i, key)
-	}
-
-	return out
-}
-
-func (g *Grouper) annsExclude(ev hydrant.Event) (out []hydrant.Annotation) {
-	for i := range ev.System {
-		if _, ok := g.set[ev.System[i].Key]; !ok {
-			out = append(out, ev.System[i])
-		}
-	}
-
-	for i := range ev.User {
-		if _, ok := g.set[ev.User[i].Key]; !ok {
-			out = append(out, ev.User[i])
-		}
 	}
 
 	return out

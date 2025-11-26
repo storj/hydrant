@@ -7,6 +7,9 @@ import (
 
 	"github.com/zeebo/errs/v2"
 
+	"github.com/histdb/histdb/flathist"
+	"github.com/histdb/histdb/rwutils"
+
 	"storj.io/hydrant"
 	"storj.io/hydrant/config"
 	"storj.io/hydrant/filter"
@@ -18,13 +21,14 @@ var evalPool = sync.Pool{New: func() any { return new(filter.EvalState) }}
 
 type aggregate struct {
 	group []hydrant.Annotation
-	anns  []hydrant.Annotation
+	aggs  map[string]flathist.H
 }
 
 type Query struct {
 	filter    *filter.Filter
 	grouper   *group.Grouper
 	submitter hydrant.Submitter
+	store     *flathist.S
 	aggs      []string
 
 	mu     sync.Mutex
@@ -33,7 +37,7 @@ type Query struct {
 
 var _ hydrant.Submitter = (*Query)(nil)
 
-func NewQuery(p *filter.Parser, submitter hydrant.Submitter, cfg config.Query) (*Query, error) {
+func NewQuery(p *filter.Parser, submitter hydrant.Submitter, store *flathist.S, cfg config.Query) (*Query, error) {
 	fil, err := p.Parse(cfg.Filter.String())
 	if err != nil {
 		return nil, err
@@ -70,6 +74,7 @@ func NewQuery(p *filter.Parser, submitter hydrant.Submitter, cfg config.Query) (
 		filter:    fil,
 		grouper:   grouper,
 		submitter: submitter,
+		store:     store,
 		aggs:      aggs,
 		groups:    make(map[unique.Handle[string]]*aggregate),
 	}, nil
@@ -95,7 +100,10 @@ func (q *Query) Submit(ctx context.Context, ev hydrant.Event) {
 	handle := q.grouper.Group(ev)
 	agg := q.groups[handle]
 	if agg == nil {
-		agg = &aggregate{group: q.grouper.Annotations(ev)}
+		agg = &aggregate{
+			group: q.grouper.Annotations(ev),
+			aggs:  make(map[string]flathist.H),
+		}
 		q.groups[handle] = agg
 	}
 
@@ -108,34 +116,25 @@ func (q *Query) Submit(ctx context.Context, ev hydrant.Event) {
 			}
 		}
 
-		into, ok := lookup(key, agg.anns)
+		into, ok := agg.aggs[key]
 		if !ok {
-			agg.anns = append(agg.anns, hydrant.Annotation{Key: key, Value: *val})
-			continue
+			into = q.store.New()
+			agg.aggs[key] = into
 		}
 
-		if into.Kind() != val.Kind() {
-			continue
-		}
-
-		switch into.Kind() {
-		case value.KindEmpty, value.KindString, value.KindBytes, value.KindBool, value.KindTimestamp:
+		switch val.Kind() {
 		case value.KindInt:
-			x, _ := into.Int()
-			y, _ := val.Int()
-			*into = value.Int(x + y)
+			x, _ := val.Int()
+			q.store.Observe(into, float32(x))
 		case value.KindUint:
-			x, _ := into.Uint()
-			y, _ := val.Uint()
-			*into = value.Uint(x + y)
+			x, _ := val.Uint()
+			q.store.Observe(into, float32(x))
 		case value.KindDuration:
-			x, _ := into.Duration()
-			y, _ := val.Duration()
-			*into = value.Duration(x + y)
+			x, _ := val.Duration()
+			q.store.Observe(into, float32(x.Seconds()))
 		case value.KindFloat:
-			x, _ := into.Float()
-			y, _ := val.Float()
-			*into = value.Float(x + y)
+			x, _ := val.Float()
+			q.store.Observe(into, float32(x))
 		}
 	}
 }
@@ -145,9 +144,15 @@ func (q *Query) Flush(ctx context.Context) {
 	defer q.mu.Unlock()
 
 	for _, anns := range q.groups {
+		user := make([]hydrant.Annotation, 0, len(q.aggs))
+		for key, h := range anns.aggs {
+			var w rwutils.W
+			flathist.AppendTo(q.store, h, &w)
+			user = append(user, hydrant.Bytes(key, w.Done().Prefix()))
+		}
 		q.submitter.Submit(ctx, hydrant.Event{
 			System: anns.group,
-			User:   anns.anns,
+			User:   user,
 		})
 	}
 	clear(q.groups)

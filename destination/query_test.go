@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/zeebo/assert"
+
+	"github.com/histdb/histdb/flathist"
 	"storj.io/hydrant"
 	"storj.io/hydrant/config"
 	"storj.io/hydrant/filter"
@@ -15,8 +17,9 @@ func TestQuery(t *testing.T) {
 	p := new(filter.Parser)
 	filter.SetBuiltins(p)
 	var bs bufferSubmitter
+	var store flathist.S
 
-	q, err := NewQuery(p, &bs, config.Query{
+	q, err := NewQuery(p, &bs, &store, config.Query{
 		Filter:     config.Expression("eq(key(name), test) && lt(key(dur), 1s)"),
 		GroupBy:    []config.Expression{"group"},
 		Aggregates: []config.Expression{"dur", "count"},
@@ -44,7 +47,9 @@ func TestQuery(t *testing.T) {
 	q.Flush(t.Context())
 	q.Flush(t.Context()) // should do nothing
 
-	t.Log(bs)
+	for _, ev := range bs {
+		t.Log(ev)
+	}
 }
 
 type bufferSubmitter []hydrant.Event

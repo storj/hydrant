@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/histdb/histdb/flathist"
 	"storj.io/hydrant"
 	"storj.io/hydrant/config"
 	"storj.io/hydrant/filter"
@@ -26,11 +27,13 @@ type Destination struct {
 
 func New(cfg config.Destination, p *filter.Parser, s *process.Store) (
 	*Destination, error) {
+	var store flathist.S
+
 	submitter := protocol.NewHTTPSubmitter(cfg.URL, process.NewSelected(s, cfg.GlobalFields))
 
 	queries := make([]*Query, 0, len(cfg.Queries))
 	for i := range cfg.Queries {
-		q, err := NewQuery(p, submitter, cfg.Queries[i])
+		q, err := NewQuery(p, submitter, &store, cfg.Queries[i])
 		if err != nil {
 			return nil, err
 		}
@@ -45,6 +48,8 @@ func New(cfg config.Destination, p *filter.Parser, s *process.Store) (
 }
 
 func (d *Destination) Run(ctx context.Context) {
+	// TODO: i think we need a final flush?
+
 	var wg sync.WaitGroup
 	wg.Go(func() {
 		d.submitter.Run(ctx)

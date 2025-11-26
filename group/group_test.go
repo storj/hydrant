@@ -3,7 +3,6 @@ package group
 import (
 	"context"
 	"runtime"
-	"slices"
 	"strings"
 	"testing"
 
@@ -14,22 +13,14 @@ func TestGrouperInclude(t *testing.T) {
 	g := NewGrouper([]string{"key1", "key2"})
 
 	h1 := g.Group(hydrant.Event{
-		System: []hydrant.Annotation{
-			hydrant.String("key1", "value1"),
-			hydrant.Int("key3", 42),
-		},
-		User: []hydrant.Annotation{
-			hydrant.String("key2", "value2"),
-		},
+		hydrant.String("key1", "value1"),
+		hydrant.Int("key3", 42),
+		hydrant.String("key2", "value2"),
 	})
 
 	h2 := g.Group(hydrant.Event{
-		System: []hydrant.Annotation{
-			hydrant.String("key1", "value1"),
-		},
-		User: []hydrant.Annotation{
-			hydrant.String("key2", "value2"),
-		},
+		hydrant.String("key1", "value1"),
+		hydrant.String("key2", "value2"),
 	})
 
 	if h1 != h2 {
@@ -48,11 +39,6 @@ func BenchmarkGrouper_Include_SpanByNameSuccess(b *testing.B) {
 	var ev hydrant.Event
 	ctx := hydrant.WithSubmitter(b.Context(), (*eventSubmitter)(&ev))
 	func() { _, span := hydrant.StartSpan(ctx); span.Done(nil) }()
-
-	// TODO: there should be some sort of event processing in the pipeline
-	// that sorts and stuff.
-	slices.SortStableFunc(ev.System, compareAnnotations)
-	slices.SortStableFunc(ev.User, compareAnnotations)
 
 	g := NewGrouper([]string{"name", "success"})
 	h := g.Group(ev)

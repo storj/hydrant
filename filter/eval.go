@@ -115,21 +115,11 @@ func (es *EvalState) Peek() (value.Value, bool) {
 }
 
 func (es *EvalState) Lookup(key string) (value.Value, bool) {
-	// TODO: hey jt this is where i was like "man they should really be maps"
-
-	s := es.ev.System
+	s := es.ev
 	for i := len(s) - 1; i >= 0; i-- {
 		if ann := s[i]; ann.Key == key {
 			return ann.Value, true
 		}
 	}
-
-	u := es.ev.User
-	for i := len(u) - 1; i >= 0; i-- {
-		if ann := u[i]; ann.Key == key {
-			return ann.Value, true
-		}
-	}
-
 	return value.Value{}, false
 }

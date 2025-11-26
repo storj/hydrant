@@ -3,6 +3,7 @@ package hydrant
 import (
 	"context"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/zeebo/mwc"
@@ -21,36 +22,37 @@ const (
 )
 
 type Span struct {
-	ctx context.Context
-	sub Submitter
-	ev  Event
-	sys [sysIdxMax]Annotation
+	ctx  context.Context
+	sub  Submitter // we do this so that finding the root submitter doesn't have to walk the full span chain
+	ev   Event
+	buf  [sysIdxMax]Annotation
+	once sync.Once
 }
 
-func (s *Span) Name() string         { x, _ := s.sys[sysIdxName].Value.String(); return x }
-func (s *Span) StartTime() time.Time { x, _ := s.sys[sysIdxStartTime].Value.Timestamp(); return x }
-func (s *Span) Id() uint64           { x, _ := s.sys[sysIdxSpanId].Value.Uint(); return x }
-func (s *Span) Parent() uint64       { x, _ := s.sys[sysIdxParentId].Value.Uint(); return x }
-func (s *Span) Task() uint64         { x, _ := s.sys[sysIdxTaskId].Value.Uint(); return x }
+func (s *Span) Name() string         { x, _ := s.buf[sysIdxName].Value.String(); return x }
+func (s *Span) StartTime() time.Time { x, _ := s.buf[sysIdxStartTime].Value.Timestamp(); return x }
+func (s *Span) Id() uint64           { x, _ := s.buf[sysIdxSpanId].Value.Uint(); return x }
+func (s *Span) Parent() uint64       { x, _ := s.buf[sysIdxParentId].Value.Uint(); return x }
+func (s *Span) Task() uint64         { x, _ := s.buf[sysIdxTaskId].Value.Uint(); return x }
 
 func (s *Span) Annotate(annotations ...Annotation) {
-	s.ev.User = append(s.ev.User, annotations...)
+	s.ev = append(s.ev, annotations...)
 }
 
 func (s *Span) Done(err *error) {
-	if s.ev.System != nil {
-		return
-	}
+	s.once.Do(func() {
+		if s.sub == nil {
+			return
+		}
 
-	now := time.Now()
-	s.sys[sysIdxTimestamp] = Timestamp("timestamp", now)
-	s.sys[sysIdxDuration] = Duration("duration", now.Sub(s.StartTime()))
-	s.sys[sysIdxSuccess] = Bool("success", err == nil || *err == nil)
-	s.ev.System = s.sys[:]
+		now := time.Now()
 
-	if s.sub != nil {
+		s.ev[sysIdxTimestamp] = Timestamp("timestamp", now)
+		s.ev[sysIdxDuration] = Duration("duration", now.Sub(s.StartTime()))
+		s.ev[sysIdxSuccess] = Bool("success", err == nil || *err == nil)
+
 		s.sub.Submit((*contextSpan)(s), s.ev)
-	}
+	})
 }
 
 func StartSpan(ctx context.Context, annotations ...Annotation) (context.Context, *Span) {
@@ -82,8 +84,7 @@ func StartRemoteSpanNamed(ctx context.Context, name string, parent, task uint64,
 	s := &Span{
 		ctx: ctx,
 		sub: GetSubmitter(ctx),
-		ev:  Event{User: annotations},
-		sys: [sysIdxMax]Annotation{
+		buf: [sysIdxMax]Annotation{
 			sysIdxName:      String("name", name),
 			sysIdxStartTime: Timestamp("start", time.Now()),
 			sysIdxSpanId:    Identifier("span_id", id),
@@ -91,6 +92,7 @@ func StartRemoteSpanNamed(ctx context.Context, name string, parent, task uint64,
 			sysIdxTaskId:    Identifier("task_id", task),
 		},
 	}
+	s.ev = s.buf[:]
 
 	return (*contextSpan)(s), s
 }

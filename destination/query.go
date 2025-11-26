@@ -21,10 +21,10 @@ import (
 var evalPool = sync.Pool{New: func() any { return new(filter.EvalState) }}
 
 type aggregate struct {
-	group    []hydrant.Annotation
+	event    hydrant.Event
 	groupSet map[string]struct{}
 	dists    map[string]flathist.H
-	invalid  map[string]struct{}
+	excluded map[string]struct{}
 }
 
 type Query struct {
@@ -91,39 +91,34 @@ func (q *Query) Submit(ctx context.Context, ev hydrant.Event) {
 		}
 
 		agg = &aggregate{
-			group:    group,
+			event:    group,
 			groupSet: groupSet,
 			dists:    make(map[string]flathist.H),
-			invalid:  make(map[string]struct{}),
+			excluded: make(map[string]struct{}),
 		}
 
 		q.groups[groupKey] = agg
 	}
 
-	includeAnnotations := func(agg *aggregate, anns []hydrant.Annotation) {
-		for _, ann := range anns {
-			if _, ok := agg.groupSet[ann.Key]; ok {
-				continue
-			}
-
-			datum, ok := distributionize(ann.Value)
-			if !ok {
-				agg.invalid[ann.Key] = struct{}{}
-				continue
-			}
-
-			into, ok := agg.dists[ann.Key]
-			if !ok {
-				into = q.store.New()
-				agg.dists[ann.Key] = into
-			}
-
-			q.store.Observe(into, datum)
+	for _, ann := range ev {
+		if _, ok := agg.groupSet[ann.Key]; ok {
+			continue
 		}
-	}
 
-	includeAnnotations(agg, ev.System)
-	includeAnnotations(agg, ev.User)
+		datum, ok := distributionize(ann.Value)
+		if !ok {
+			agg.excluded[ann.Key] = struct{}{}
+			continue
+		}
+
+		into, ok := agg.dists[ann.Key]
+		if !ok {
+			into = q.store.New()
+			agg.dists[ann.Key] = into
+		}
+
+		q.store.Observe(into, datum)
+	}
 }
 
 func distributionize(v value.Value) (float32, bool) {
@@ -152,20 +147,16 @@ func (q *Query) Flush(ctx context.Context) {
 	defer q.mu.Unlock()
 
 	for _, agg := range q.groups {
-		var user []hydrant.Annotation
+		if len(agg.excluded) > 0 {
+			agg.event = append(agg.event, hydrant.String("excluded",
+				strings.Join(slices.Collect(maps.Keys(agg.excluded)), ", ")))
+		}
 		for key, h := range agg.dists {
 			var w rwutils.W
 			flathist.AppendTo(q.store, h, &w)
-			user = append(user, hydrant.Bytes(key, w.Done().Prefix()))
+			agg.event = append(agg.event, hydrant.Bytes(key, w.Done().Prefix()))
 		}
-		if len(agg.invalid) > 0 {
-			agg.group = append(agg.group, hydrant.String("invalid",
-				strings.Join(slices.Collect(maps.Keys(agg.invalid)), ", ")))
-		}
-		q.submitter.Submit(ctx, hydrant.Event{
-			System: agg.group,
-			User:   user,
-		})
+		q.submitter.Submit(ctx, agg.event)
 	}
 	clear(q.groups)
 }

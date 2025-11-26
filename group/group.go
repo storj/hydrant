@@ -13,19 +13,15 @@ import (
 
 type Grouper struct {
 	keys  []string
-	hints [3][]atomic.Uint32
+	hints []atomic.Uint32
 	set   map[string]struct{}
 }
 
 func NewGrouper(keys []string) *Grouper {
 	g := &Grouper{
-		keys: slices.Sorted(slices.Values(keys)),
-		hints: [3][]atomic.Uint32{
-			make([]atomic.Uint32, len(keys)),
-			make([]atomic.Uint32, len(keys)),
-			make([]atomic.Uint32, len(keys)),
-		},
-		set: maps.Collect(seq2seq2(slices.Values(keys), struct{}{})),
+		keys:  slices.Sorted(slices.Values(keys)),
+		hints: make([]atomic.Uint32, len(keys)),
+		set:   maps.Collect(seq2seq2(slices.Values(keys), struct{}{})),
 	}
 	return g
 }
@@ -37,30 +33,24 @@ func (g *Grouper) Group(ev hydrant.Event) unique.Handle[string] {
 func (g *Grouper) group(ev hydrant.Event) unique.Handle[string] {
 	buf := make([]byte, 0, 256)
 
-	lookup := func(anns []hydrant.Annotation, class int, i int, key string) bool {
-		if h := g.hints[class][i].Load(); h != 0 {
-			h >>= 1
-			if h < uint32(len(anns)) && anns[h].Key == key {
-				buf = appendString(buf, anns[h].Key)
-				buf = anns[h].Value.Serialize(buf)
-				return true
-			}
-		}
-
-		for j := len(anns) - 1; j >= 0; j-- {
-			if anns[j].Key == key {
-				buf = appendString(buf, anns[j].Key)
-				buf = anns[j].Value.Serialize(buf)
-				g.hints[class][i].Store(uint32(j)<<1 | 1)
-				return true
-			}
-		}
-
-		return false
-	}
-
 	for i, key := range g.keys {
-		_ = lookup(ev.System, 0, i, key) || lookup(ev.User, 1, i, key)
+		if h := g.hints[i].Load(); h != 0 {
+			h >>= 1
+			if h < uint32(len(ev)) && ev[h].Key == key {
+				buf = appendString(buf, ev[h].Key)
+				buf = ev[h].Value.Serialize(buf)
+				continue
+			}
+		}
+
+		for j := len(ev) - 1; j >= 0; j-- {
+			if ev[j].Key == key {
+				buf = appendString(buf, ev[j].Key)
+				buf = ev[j].Value.Serialize(buf)
+				g.hints[i].Store(uint32(j)<<1 | 1)
+				continue
+			}
+		}
 	}
 
 	return unique.Make(string(buf))
@@ -71,28 +61,22 @@ func (g *Grouper) Annotations(ev hydrant.Event) []hydrant.Annotation {
 }
 
 func (g *Grouper) anns(ev hydrant.Event) (out []hydrant.Annotation) {
-	lookup := func(anns []hydrant.Annotation, class int, i int, key string) bool {
-		if h := g.hints[class][i].Load(); h != 0 {
-			h >>= 1
-			if h < uint32(len(anns)) && anns[h].Key == key {
-				out = append(out, anns[h])
-				return true
-			}
-		}
-
-		for j := len(anns) - 1; j >= 0; j-- {
-			if anns[j].Key == key {
-				out = append(out, anns[j])
-				g.hints[class][i].Store(uint32(j)<<1 | 1)
-				return true
-			}
-		}
-
-		return false
-	}
-
 	for i, key := range g.keys {
-		_ = lookup(ev.System, 0, i, key) || lookup(ev.User, 1, i, key)
+		if h := g.hints[i].Load(); h != 0 {
+			h >>= 1
+			if h < uint32(len(ev)) && ev[h].Key == key {
+				out = append(out, ev[h])
+				continue
+			}
+		}
+
+		for j := len(ev) - 1; j >= 0; j-- {
+			if ev[j].Key == key {
+				out = append(out, ev[j])
+				g.hints[i].Store(uint32(j)<<1 | 1)
+				continue
+			}
+		}
 	}
 
 	return out

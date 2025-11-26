@@ -7,10 +7,7 @@ import (
 	"storj.io/hydrant/value"
 )
 
-type Event struct {
-	System []Annotation
-	User   []Annotation
-}
+type Event []Annotation
 
 type Annotation struct {
 	Key   string

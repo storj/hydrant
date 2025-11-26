@@ -7,7 +7,6 @@ import (
 	"github.com/zeebo/assert"
 
 	"storj.io/hydrant"
-	"storj.io/hydrant/value"
 )
 
 func TestEvalShortCircuit(t *testing.T) {
@@ -51,10 +50,8 @@ func TestEvalDoubleKey(t *testing.T) {
 	t.Log(filter.prog)
 
 	ev := hydrant.Event{
-		System: []hydrant.Annotation{
-			{"foo", value.String("inner")},
-			{"inner", value.String("bar")},
-		},
+		hydrant.String("foo", "inner"),
+		hydrant.String("inner", "bar"),
 	}
 
 	assert.True(t, es.Evaluate(filter, ev))
@@ -69,24 +66,20 @@ func BenchmarkEval(b *testing.B) {
 	SetBuiltins(&p)
 
 	filter, err := p.Parse(`
-		eq(key(foo), bart) && has(test) && lt(rand(), 1) && gte(key(dur), 1m)
+		eq(key(foo), bar) && has(test) && lt(rand(), 1) && gte(key(dur), 1m)
 	`)
 	assert.NoError(b, err)
 	b.Log("prog:", filter.prog)
 	b.Log("vals:", anyfy(filter.vals))
 
 	ev := hydrant.Event{
-		System: []hydrant.Annotation{
-			{"foo", value.String("bar")},
-			{"dur", value.Duration(time.Minute)},
-		},
-		User: []hydrant.Annotation{
-			{"test", value.Int(42)},
-		},
+		hydrant.String("foo", "bar"),
+		hydrant.Duration("dur", time.Minute),
+		hydrant.Int("test", 42),
 	}
 
 	var es EvalState
-	assert.That(b, !es.Evaluate(filter, ev))
+	assert.That(b, es.Evaluate(filter, ev))
 	b.Log("executed", es.executed, "instructions")
 
 	b.ReportAllocs()

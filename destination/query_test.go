@@ -21,18 +21,16 @@ func TestQuery(t *testing.T) {
 
 	q, err := NewQuery(p, &bs, &store, config.Query{
 		Filter:  config.Expression("eq(key(name), test) && lt(key(dur), 1s)"),
-		GroupBy: []config.Expression{"group", "name"},
+		GroupBy: []config.Expression{"group"},
 	})
 	assert.NoError(t, err)
 
 	ev := func(name string, dur time.Duration, group string, count int) hydrant.Event {
 		return hydrant.Event{
-			System: []hydrant.Annotation{
-				hydrant.String("name", name),
-				hydrant.Duration("dur", dur),
-				hydrant.String("group", group),
-			},
-			User: []hydrant.Annotation{hydrant.Int("count", int64(count))},
+			hydrant.String("name", name),
+			hydrant.Duration("dur", dur),
+			hydrant.String("group", group),
+			hydrant.Int("count", int64(count)),
 		}
 	}
 

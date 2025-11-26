@@ -14,25 +14,23 @@ func Log(ctx context.Context, message string, annotations ...Annotation) {
 		fn := runtime.FuncForPC(pcs[0])
 		file, line := fn.FileLine(pcs[0])
 
-		sys := (&[7]Annotation{
+		ev := Event((&[7]Annotation{
 			0: String("file", file),
 			1: String("func", fn.Name()),
 			2: Int("line", int64(line)),
 			3: String("message", message),
-		})[:4]
+		})[:4])
 
 		if span := GetSpan(ctx); span != nil {
-			sys = append(sys,
+			ev = append(ev,
 				Identifier("span_id", span.Id()),
 				Identifier("task_id", span.Task()),
 			)
 		}
 
-		sys = append(sys, Timestamp("timestamp", time.Now()))
+		ev = append(ev, Timestamp("timestamp", time.Now()))
+		ev = append(ev, annotations...)
 
-		submitter.Submit(ctx, Event{
-			System: sys,
-			User:   annotations,
-		})
+		submitter.Submit(ctx, ev)
 	}
 }

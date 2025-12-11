@@ -27,10 +27,6 @@ func NewGrouper(keys []string) *Grouper {
 }
 
 func (g *Grouper) Group(ev hydrant.Event) unique.Handle[string] {
-	return g.group(ev)
-}
-
-func (g *Grouper) group(ev hydrant.Event) unique.Handle[string] {
 	buf := make([]byte, 0, 256)
 
 	for i, key := range g.keys {
@@ -38,7 +34,7 @@ func (g *Grouper) group(ev hydrant.Event) unique.Handle[string] {
 			h >>= 1
 			if h < uint32(len(ev)) && ev[h].Key == key {
 				buf = appendString(buf, ev[h].Key)
-				buf = ev[h].Value.Serialize(buf)
+				buf = ev[h].Value.AppendTo(buf)
 				continue
 			}
 		}
@@ -46,7 +42,7 @@ func (g *Grouper) group(ev hydrant.Event) unique.Handle[string] {
 		for j := len(ev) - 1; j >= 0; j-- {
 			if ev[j].Key == key {
 				buf = appendString(buf, ev[j].Key)
-				buf = ev[j].Value.Serialize(buf)
+				buf = ev[j].Value.AppendTo(buf)
 				g.hints[i].Store(uint32(j)<<1 | 1)
 				continue
 			}
@@ -57,10 +53,8 @@ func (g *Grouper) group(ev hydrant.Event) unique.Handle[string] {
 }
 
 func (g *Grouper) Annotations(ev hydrant.Event) []hydrant.Annotation {
-	return g.anns(ev)
-}
+	var out []hydrant.Annotation
 
-func (g *Grouper) anns(ev hydrant.Event) (out []hydrant.Annotation) {
 	for i, key := range g.keys {
 		if h := g.hints[i].Load(); h != 0 {
 			h >>= 1

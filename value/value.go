@@ -1,27 +1,62 @@
 package value
 
 import (
+	"bytes"
+	"encoding/binary"
 	"math"
 	"time"
 	"unsafe"
+
+	"github.com/zeebo/errs/v2"
+
+	"github.com/histdb/histdb/flathist"
 )
 
 var sentinels [7]byte
 
-func isSentinel(ptr *byte) bool {
-	return uintptr(unsafe.Pointer(ptr))-
-		uintptr(unsafe.Pointer(&sentinels[0])) < uintptr(len(sentinels))
+type Kind uint8
+
+const (
+	KindEmpty      Kind = 0
+	KindString     Kind = 1
+	KindBytes      Kind = 2
+	KindHistogram  Kind = 3
+	KindInt        Kind = 4
+	KindUint       Kind = 5
+	KindDuration   Kind = 6
+	KindFloat      Kind = 7
+	KindBool       Kind = 8
+	KindTimestamp  Kind = 9
+	KindIdentifier Kind = 10
+)
+
+func (k Kind) sentinel() unsafe.Pointer {
+	return unsafe.Pointer(&sentinels[k-4])
+}
+
+func isSentinel(ptr unsafe.Pointer) bool {
+	return uintptr(ptr)-uintptr(unsafe.Pointer(&sentinels[0])) < uintptr(len(sentinels))
 }
 
 type Value struct {
-	ptr  *byte
+	_ [0]func() // no equality, must use Equal/Less
+
+	ptr  unsafe.Pointer
 	data uint64
+}
+
+func (v Value) Kind() Kind {
+	d := uintptr(v.ptr) - uintptr(unsafe.Pointer(&sentinels[0]))
+	if d < uintptr(len(sentinels)) {
+		return Kind(d + 4)
+	}
+	return Kind(v.data >> 62)
 }
 
 func String(x string) (v Value) {
 	if uint64(len(x))>>62 == 0 {
 		v = Value{
-			ptr:  unsafe.StringData(x),
+			ptr:  unsafe.Pointer(unsafe.StringData(x)),
 			data: 0b01<<62 | uint64(len(x)),
 		}
 	}
@@ -30,7 +65,7 @@ func String(x string) (v Value) {
 
 func (v Value) String() (x string, ok bool) {
 	if ok = v.data>>62 == 0b01 && !isSentinel(v.ptr); ok {
-		x = unsafe.String(v.ptr, int(v.data&^(0b11<<62)))
+		x = unsafe.String((*byte)(v.ptr), int(v.data&^(0b11<<62)))
 	}
 	return x, ok
 }
@@ -38,7 +73,7 @@ func (v Value) String() (x string, ok bool) {
 func Bytes(x []byte) (v Value) {
 	if uint64(len(x))>>62 == 0 {
 		v = Value{
-			ptr:  unsafe.SliceData(x),
+			ptr:  unsafe.Pointer(unsafe.SliceData(x)),
 			data: 0b10<<62 | uint64(len(x)),
 		}
 	}
@@ -47,20 +82,37 @@ func Bytes(x []byte) (v Value) {
 
 func (v Value) Bytes() (x []byte, ok bool) {
 	if ok = v.data>>62 == 0b10 && !isSentinel(v.ptr); ok {
-		x = unsafe.Slice(v.ptr, int(v.data&^(0b11<<62)))
+		x = unsafe.Slice((*byte)(v.ptr), int(v.data&^(0b11<<62)))
+	}
+	return x, ok
+}
+
+func Histogram(x *flathist.Histogram) (v Value) {
+	if x != nil {
+		v = Value{
+			ptr:  unsafe.Pointer(x),
+			data: 0b11 << 62,
+		}
+	}
+	return v
+}
+
+func (v Value) Histogram() (x *flathist.Histogram, ok bool) {
+	if ok = v.data>>62 == 0b11 && !isSentinel(v.ptr); ok {
+		x = (*flathist.Histogram)(v.ptr)
 	}
 	return x, ok
 }
 
 func Int(x int64) Value {
 	return Value{
-		ptr:  &sentinels[0],
+		ptr:  KindInt.sentinel(),
 		data: uint64(x),
 	}
 }
 
 func (v Value) Int() (x int64, ok bool) {
-	if ok = v.ptr == &sentinels[0]; ok {
+	if ok = v.ptr == KindInt.sentinel(); ok {
 		x = int64(v.data)
 	}
 	return x, ok
@@ -68,13 +120,13 @@ func (v Value) Int() (x int64, ok bool) {
 
 func Uint(x uint64) Value {
 	return Value{
-		ptr:  &sentinels[1],
+		ptr:  KindUint.sentinel(),
 		data: x,
 	}
 }
 
 func (v Value) Uint() (x uint64, ok bool) {
-	if ok = v.ptr == &sentinels[1]; ok {
+	if ok = v.ptr == KindUint.sentinel(); ok {
 		x = v.data
 	}
 	return x, ok
@@ -82,13 +134,13 @@ func (v Value) Uint() (x uint64, ok bool) {
 
 func Duration(x time.Duration) Value {
 	return Value{
-		ptr:  &sentinels[2],
+		ptr:  KindDuration.sentinel(),
 		data: uint64(x),
 	}
 }
 
 func (v Value) Duration() (x time.Duration, ok bool) {
-	if ok = v.ptr == &sentinels[2]; ok {
+	if ok = v.ptr == KindDuration.sentinel(); ok {
 		x = time.Duration(v.data)
 	}
 	return x, ok
@@ -96,13 +148,13 @@ func (v Value) Duration() (x time.Duration, ok bool) {
 
 func Float(x float64) Value {
 	return Value{
-		ptr:  &sentinels[3],
+		ptr:  KindFloat.sentinel(),
 		data: math.Float64bits(x),
 	}
 }
 
 func (v Value) Float() (x float64, ok bool) {
-	if ok = v.ptr == &sentinels[3]; ok {
+	if ok = v.ptr == KindFloat.sentinel(); ok {
 		x = math.Float64frombits(v.data)
 	}
 	return x, ok
@@ -114,13 +166,13 @@ func Bool(x bool) Value {
 		data = 1
 	}
 	return Value{
-		ptr:  &sentinels[4],
+		ptr:  KindBool.sentinel(),
 		data: data,
 	}
 }
 
 func (v Value) Bool() (x bool, ok bool) {
-	if ok = v.ptr == &sentinels[4]; ok {
+	if ok = v.ptr == KindBool.sentinel(); ok {
 		x = v.data != 0
 	}
 	return x, ok
@@ -128,13 +180,13 @@ func (v Value) Bool() (x bool, ok bool) {
 
 func Timestamp(t time.Time) Value {
 	return Value{
-		ptr:  &sentinels[5],
+		ptr:  KindTimestamp.sentinel(),
 		data: uint64(t.UnixNano()),
 	}
 }
 
 func (v Value) Timestamp() (t time.Time, ok bool) {
-	if ok = v.ptr == &sentinels[5]; ok {
+	if ok = v.ptr == KindTimestamp.sentinel(); ok {
 		t = time.Unix(0, int64(v.data))
 	}
 	return t, ok
@@ -142,13 +194,13 @@ func (v Value) Timestamp() (t time.Time, ok bool) {
 
 func Identifier(x uint64) Value {
 	return Value{
-		ptr:  &sentinels[6],
+		ptr:  KindIdentifier.sentinel(),
 		data: x,
 	}
 }
 
 func (v Value) Identifier() (x uint64, ok bool) {
-	if ok = v.ptr == &sentinels[6]; ok {
+	if ok = v.ptr == KindIdentifier.sentinel(); ok {
 		x = v.data
 	}
 	return x, ok
@@ -156,19 +208,19 @@ func (v Value) Identifier() (x uint64, ok bool) {
 
 func (v Value) AsAny() (x any) {
 	switch v.ptr {
-	case &sentinels[0]:
+	case KindInt.sentinel():
 		x, _ = v.Int()
-	case &sentinels[1]:
+	case KindUint.sentinel():
 		x, _ = v.Uint()
-	case &sentinels[2]:
+	case KindDuration.sentinel():
 		x, _ = v.Duration()
-	case &sentinels[3]:
+	case KindFloat.sentinel():
 		x, _ = v.Float()
-	case &sentinels[4]:
+	case KindBool.sentinel():
 		x, _ = v.Bool()
-	case &sentinels[5]:
+	case KindTimestamp.sentinel():
 		x, _ = v.Timestamp()
-	case &sentinels[6]:
+	case KindIdentifier.sentinel():
 		x, _ = v.Identifier()
 	default:
 		switch v.data >> 62 {
@@ -176,68 +228,85 @@ func (v Value) AsAny() (x any) {
 			x, _ = v.String()
 		case 0b10:
 			x, _ = v.Bytes()
+		case 0b11:
+			x, _ = v.Histogram()
 		}
 	}
 	return x
 }
 
-type Kind uint8
+func (v Value) AppendTo(buf []byte) []byte {
+	k := v.Kind()
 
-const (
-	KindEmpty      Kind = 0
-	KindString     Kind = 1
-	KindBytes      Kind = 2
-	KindInt        Kind = 3
-	KindUint       Kind = 4
-	KindDuration   Kind = 5
-	KindFloat      Kind = 6
-	KindBool       Kind = 7
-	KindTimestamp  Kind = 8
-	KindIdentifier Kind = 9
-)
+	buf = append(buf, byte(k))
+	switch k {
+	case KindHistogram:
+		x, _ := v.Histogram()
+		return x.AppendTo(buf)
 
-func (v Value) Kind() Kind {
-	d := uintptr(unsafe.Pointer(v.ptr)) - uintptr(unsafe.Pointer(&sentinels[0]))
-	if d < uintptr(len(sentinels)) {
-		return Kind(d + 3)
+	case KindEmpty:
+		return buf
 	}
-	return Kind(v.data >> 62)
-}
 
-func Equal(left, right Value) bool {
-	if left.ptr == right.ptr {
-		return left.data == right.data
-	}
-	switch (left.data>>62)<<2 | (right.data >> 62) {
-	case 0b0101:
-		lstr, _ := left.String()
-		rstr, _ := right.String()
-		return lstr == rstr
-	case 0b1010:
-		lb, _ := left.Bytes()
-		rb, _ := right.Bytes()
-		return string(lb) == string(rb)
-	}
-	return false
-}
+	var tmp [8]byte
+	binary.LittleEndian.PutUint64(tmp[:], v.data)
+	buf = append(buf, tmp[:]...)
 
-func (v Value) Serialize(buf []byte) []byte {
-	buf = append(buf,
-		byte(v.Kind()),
-		byte(v.data>>56), byte(v.data>>48), byte(v.data>>40), byte(v.data>>32),
-		byte(v.data>>24), byte(v.data>>16), byte(v.data>>8), byte(v.data),
-	)
+	switch k {
+	case KindString:
+		x, _ := v.String()
+		buf = append(buf, x...)
 
-	if !isSentinel(v.ptr) {
-		switch v.data >> 62 {
-		case 0b01:
-			x, _ := v.String()
-			buf = append(buf, x...)
-		case 0b10:
-			x, _ := v.Bytes()
-			buf = append(buf, x...)
-		}
+	case KindBytes:
+		x, _ := v.Bytes()
+		buf = append(buf, x...)
 	}
 
 	return buf
+}
+
+func (v *Value) ReadFrom(buf []byte) ([]byte, error) {
+	*v = Value{} // zero the value for any error paths
+
+	r := reader{buf: buf}
+
+	k := Kind(r.ReadUint8())
+	if k < KindEmpty || k > KindIdentifier {
+		return nil, errs.Errorf("invalid kind: %d", k)
+	}
+
+	switch k {
+	case KindEmpty:
+
+	case KindString:
+		n := r.ReadUint64() &^ (0b11 << 62)
+		*v = String(string(r.ReadBytes(n)))
+
+	case KindBytes:
+		n := r.ReadUint64() &^ (0b11 << 62)
+		*v = Bytes(bytes.Clone(r.ReadBytes(n)))
+
+	case KindHistogram:
+		rem, err := r.Done()
+		if err != nil {
+			return nil, err
+		}
+
+		h := flathist.NewHistogram()
+		rem, err = h.ReadFrom(rem)
+		if err != nil {
+			return nil, err
+		}
+
+		*v = Histogram(h)
+		return rem, nil
+
+	default:
+		*v = Value{
+			ptr:  k.sentinel(),
+			data: r.ReadUint64(),
+		}
+	}
+
+	return r.Done()
 }

@@ -71,7 +71,7 @@ func (Funcs) Less(es *EvalState) bool {
 		return false
 	}
 
-	b, ok := valuesLess(left, right)
+	b, ok := value.Less(left, right)
 	es.Push(value.Bool(b && ok))
 	return true
 }
@@ -82,7 +82,7 @@ func (Funcs) LessEqual(es *EvalState) bool {
 		return false
 	}
 
-	if b, ok := valuesLess(left, right); b && ok {
+	if b, ok := value.Less(left, right); b && ok {
 		es.Push(value.Bool(true))
 		return true
 	}
@@ -97,7 +97,7 @@ func (Funcs) Greater(es *EvalState) bool {
 		return false
 	}
 
-	b, ok := valuesLess(left, right)
+	b, ok := value.Less(left, right)
 	es.Push(value.Bool(!b && ok))
 	return true
 }
@@ -108,7 +108,7 @@ func (Funcs) GreaterEqual(es *EvalState) bool {
 		return false
 	}
 
-	if b, ok := valuesLess(left, right); !b && ok {
+	if b, ok := value.Less(left, right); !b && ok {
 		es.Push(value.Bool(true))
 		return true
 	}
@@ -152,46 +152,4 @@ func upcastNumeric(v value.Value) value.Value {
 		v = value.Float(float64(u))
 	}
 	return v
-}
-
-func valuesLess(left, right value.Value) (b bool, ok bool) {
-	switch uint64(left.Kind())<<8 | uint64(right.Kind()) {
-	default:
-		return false, false
-
-	case uint64(value.KindString)<<8 | uint64(value.KindString):
-		l, _ := left.String()
-		r, _ := right.String()
-		return l < r, true
-
-	case uint64(value.KindBytes)<<8 | uint64(value.KindBytes):
-		l, _ := left.Bytes()
-		r, _ := right.Bytes()
-		return string(l) < string(r), true
-
-	case uint64(value.KindInt)<<8 | uint64(value.KindInt):
-		l, _ := left.Int()
-		r, _ := right.Int()
-		return l < r, true
-
-	case uint64(value.KindUint)<<8 | uint64(value.KindUint):
-		l, _ := left.Uint()
-		r, _ := right.Uint()
-		return l < r, true
-
-	case uint64(value.KindDuration)<<8 | uint64(value.KindDuration):
-		l, _ := left.Duration()
-		r, _ := right.Duration()
-		return l < r, true
-
-	case uint64(value.KindFloat)<<8 | uint64(value.KindFloat):
-		l, _ := left.Float()
-		r, _ := right.Float()
-		return l < r, true
-
-	case uint64(value.KindTimestamp)<<8 | uint64(value.KindTimestamp):
-		l, _ := left.Timestamp()
-		r, _ := right.Timestamp()
-		return l.Before(r), true
-	}
 }

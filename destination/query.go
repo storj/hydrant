@@ -6,10 +6,10 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 	"unique"
 
 	"github.com/histdb/histdb/flathist"
-	"github.com/histdb/histdb/rwutils"
 
 	"storj.io/hydrant"
 	"storj.io/hydrant/config"
@@ -23,7 +23,8 @@ var evalPool = sync.Pool{New: func() any { return new(filter.EvalState) }}
 type aggregate struct {
 	event    hydrant.Event
 	groupSet map[string]struct{}
-	dists    map[string]flathist.H
+	hists    map[string]*flathist.Histogram
+	histOrd  []string
 	excluded map[string]struct{}
 }
 
@@ -31,15 +32,15 @@ type Query struct {
 	filter    *filter.Filter
 	grouper   *group.Grouper
 	submitter hydrant.Submitter
-	store     *flathist.S
 
 	mu     sync.Mutex
 	groups map[unique.Handle[string]]*aggregate
+	epoch  time.Time
 }
 
 var _ hydrant.Submitter = (*Query)(nil)
 
-func NewQuery(p *filter.Parser, submitter hydrant.Submitter, store *flathist.S, cfg config.Query) (*Query, error) {
+func NewQuery(p *filter.Parser, submitter hydrant.Submitter, cfg config.Query) (*Query, error) {
 	fil, err := p.Parse(cfg.Filter.String())
 	if err != nil {
 		return nil, err
@@ -58,8 +59,9 @@ func NewQuery(p *filter.Parser, submitter hydrant.Submitter, store *flathist.S, 
 		filter:    fil,
 		grouper:   grouper,
 		submitter: submitter,
-		store:     store,
-		groups:    make(map[unique.Handle[string]]*aggregate),
+
+		groups: make(map[unique.Handle[string]]*aggregate),
+		epoch:  time.Now(),
 	}, nil
 }
 
@@ -93,7 +95,7 @@ func (q *Query) Submit(ctx context.Context, ev hydrant.Event) {
 		agg = &aggregate{
 			event:    group,
 			groupSet: groupSet,
-			dists:    make(map[string]flathist.H),
+			hists:    make(map[string]*flathist.Histogram),
 			excluded: make(map[string]struct{}),
 		}
 
@@ -105,23 +107,37 @@ func (q *Query) Submit(ctx context.Context, ev hydrant.Event) {
 			continue
 		}
 
-		datum, ok := distributionize(ann.Value)
+		// if we got a full histogram, merge it into our existing one.
+		if h, ok := ann.Value.Histogram(); ok {
+			into, ok := agg.hists[ann.Key]
+			if !ok {
+				into = flathist.NewHistogram()
+				agg.hists[ann.Key] = into
+				agg.histOrd = append(agg.histOrd, ann.Key)
+			}
+
+			into.Merge(h)
+			continue
+		}
+
+		datum, ok := observableValue(ann.Value)
 		if !ok {
 			agg.excluded[ann.Key] = struct{}{}
 			continue
 		}
 
-		into, ok := agg.dists[ann.Key]
+		into, ok := agg.hists[ann.Key]
 		if !ok {
-			into = q.store.New()
-			agg.dists[ann.Key] = into
+			into = flathist.NewHistogram()
+			agg.hists[ann.Key] = into
+			agg.histOrd = append(agg.histOrd, ann.Key)
 		}
 
-		q.store.Observe(into, datum)
+		into.Observe(datum)
 	}
 }
 
-func distributionize(v value.Value) (float32, bool) {
+func observableValue(v value.Value) (float32, bool) {
 	switch v.Kind() {
 	case value.KindInt:
 		x, _ := v.Int()
@@ -146,26 +162,24 @@ func (q *Query) Flush(ctx context.Context) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
+	end := time.Now()
+
 	for _, agg := range q.groups {
+		agg.event = append(agg.event,
+			hydrant.Timestamp("agg:start_time", q.epoch),
+			hydrant.Timestamp("agg:end_time", end),
+			hydrant.Duration("agg:duration", end.Sub(q.epoch)),
+		)
 		if len(agg.excluded) > 0 {
-			agg.event = append(agg.event, hydrant.String("excluded",
-				strings.Join(slices.Collect(maps.Keys(agg.excluded)), ", ")))
+			agg.event = append(agg.event, hydrant.String("agg:excluded",
+				strings.Join(slices.Collect(maps.Keys(agg.excluded)), ",")))
 		}
-		for key, h := range agg.dists {
-			var w rwutils.W
-			flathist.AppendTo(q.store, h, &w)
-			agg.event = append(agg.event, hydrant.Bytes(key, w.Done().Prefix()))
+		for _, key := range agg.histOrd {
+			agg.event = append(agg.event, hydrant.Histogram(key, agg.hists[key]))
 		}
 		q.submitter.Submit(ctx, agg.event)
 	}
-	clear(q.groups)
-}
 
-func lookup(key string, anns []hydrant.Annotation) (*value.Value, bool) {
-	for i := len(anns) - 1; i >= 0; i-- {
-		if anns[i].Key == key {
-			return &anns[i].Value, true
-		}
-	}
-	return nil, false
+	q.epoch = end
+	clear(q.groups)
 }

@@ -8,28 +8,31 @@ import (
 	"unsafe"
 
 	"github.com/zeebo/assert"
+
+	"github.com/histdb/histdb/flathist"
 )
 
 var g byte
 
 func TestIsSentinel(t *testing.T) {
 	for i := range len(sentinels) {
-		assert.That(t, isSentinel(&sentinels[i]))
+		assert.That(t, isSentinel(unsafe.Pointer(&sentinels[i])))
 	}
 
 	assert.That(t, !isSentinel(nil))
-	assert.That(t, !isSentinel(&g))
+	assert.That(t, !isSentinel(unsafe.Pointer(&g)))
 
 	var b byte
-	assert.That(t, !isSentinel(&b))
+	assert.That(t, !isSentinel(unsafe.Pointer(&b)))
 
-	assert.That(t, !isSentinel((*byte)(unsafe.Add(unsafe.Pointer(&sentinels[len(sentinels)-1]), 1))))
-	assert.That(t, !isSentinel((*byte)(unsafe.Add(unsafe.Pointer(&sentinels[0]), -1))))
+	assert.That(t, !isSentinel(unsafe.Add(unsafe.Pointer(&sentinels[len(sentinels)-1]), 1)))
+	assert.That(t, !isSentinel(unsafe.Add(unsafe.Pointer(&sentinels[0]), -1)))
 }
 
 func TestKind(t *testing.T) {
 	assert.Equal(t, String("hello").Kind(), KindString)
 	assert.Equal(t, Bytes([]byte{1, 2, 3}).Kind(), KindBytes)
+	assert.Equal(t, Histogram(flathist.NewHistogram()).Kind(), KindHistogram)
 	assert.Equal(t, Int(42).Kind(), KindInt)
 	assert.Equal(t, Uint(42).Kind(), KindUint)
 	assert.Equal(t, Duration(5*time.Second).Kind(), KindDuration)
@@ -54,6 +57,12 @@ func TestValue(t *testing.T) {
 			[]byte{},
 			nil,
 			[]byte("Hello 世界 🌍"),
+		)
+	})
+
+	t.Run("hist", func(t *testing.T) {
+		runValueTest(t, Histogram, Value.Histogram,
+			flathist.NewHistogram(),
 		)
 	})
 
@@ -139,6 +148,7 @@ func TestValueAsAnyOptimizedTypes(t *testing.T) {
 	t.Run("bytes", func(t *testing.T) { assertAsAnyType(t, Bytes([]byte{1, 2, 3}), []byte{1, 2, 3}) })
 	t.Run("empty bytes", func(t *testing.T) { assertAsAnyType(t, Bytes([]byte{}), []byte{}) })
 	t.Run("nil bytes", func(t *testing.T) { assertAsAnyType(t, Bytes(nil), []byte(nil)) })
+	t.Run("hist", func(t *testing.T) { h := flathist.NewHistogram(); assertAsAnyType(t, Histogram(h), h) })
 	t.Run("int", func(t *testing.T) { assertAsAnyType(t, Int(42), int64(42)) })
 	t.Run("uint", func(t *testing.T) { assertAsAnyType(t, Uint(42), uint64(42)) })
 	t.Run("duration", func(t *testing.T) { assertAsAnyType(t, Duration(5*time.Second), 5*time.Second) })
@@ -154,6 +164,7 @@ func TestValueZeroValue(t *testing.T) {
 	// Zero value should not match any constructed type
 	assertNotType(t, v, Value.String)
 	assertNotType(t, v, Value.Bytes)
+	assertNotType(t, v, Value.Histogram)
 	assertNotType(t, v, Value.Int)
 	assertNotType(t, v, Value.Uint)
 	assertNotType(t, v, Value.Duration)
@@ -167,16 +178,43 @@ func TestValueZeroValue(t *testing.T) {
 }
 
 func TestSerialize(t *testing.T) {
-	t.Logf("%x", Value{}.Serialize(nil))
-	t.Logf("%x", String("hello").Serialize(nil))
-	t.Logf("%x", Bytes([]byte{1, 2, 3, 4, 5}).Serialize(nil))
-	t.Logf("%x", Int(42).Serialize(nil))
-	t.Logf("%x", Uint(42).Serialize(nil))
-	t.Logf("%x", Duration(5*time.Second).Serialize(nil))
-	t.Logf("%x", Float(3.14).Serialize(nil))
-	t.Logf("%x", Bool(true).Serialize(nil))
-	t.Logf("%x", Timestamp(time.Unix(1, 2)).Serialize(nil))
-	t.Logf("%x", Identifier(64).Serialize(nil))
+	h := flathist.NewHistogram()
+	h.Observe(1)
+
+	t.Logf("empty  %x", Value{}.AppendTo(nil))
+	t.Logf("string %x", String("hello").AppendTo(nil))
+	t.Logf("bytes  %x", Bytes([]byte{1, 2, 3}).AppendTo(nil))
+	t.Logf("hist   %x", Histogram(h).AppendTo(nil))
+	t.Logf("int    %x", Int(42).AppendTo(nil))
+	t.Logf("uint   %x", Uint(42).AppendTo(nil))
+	t.Logf("dur    %x", Duration(5*time.Second).AppendTo(nil))
+	t.Logf("float  %x", Float(3.14).AppendTo(nil))
+	t.Logf("bool   %x", Bool(true).AppendTo(nil))
+	t.Logf("time   %x", Timestamp(time.Unix(1, 2)).AppendTo(nil))
+	t.Logf("ident  %x", Identifier(64).AppendTo(nil))
+
+	testRoundTrip := func(t *testing.T, v Value) {
+		t.Helper()
+		ser := v.AppendTo(nil)
+		ser = append(ser, 1, 2, 3, 4)
+		var v2 Value
+		rem, err := v2.ReadFrom(ser)
+		assert.NoError(t, err)
+		assert.Equal(t, rem, []byte{1, 2, 3, 4})
+		assert.That(t, Equal(v, v2))
+	}
+
+	t.Run("empty", func(t *testing.T) { testRoundTrip(t, Value{}) })
+	t.Run("string", func(t *testing.T) { testRoundTrip(t, String("hello world")) })
+	t.Run("bytes", func(t *testing.T) { testRoundTrip(t, Bytes([]byte{1, 2, 3, 4, 5})) })
+	t.Run("hist", func(t *testing.T) { testRoundTrip(t, Histogram(h)) })
+	t.Run("int", func(t *testing.T) { testRoundTrip(t, Int(4200)) })
+	t.Run("uint", func(t *testing.T) { testRoundTrip(t, Uint(4200)) })
+	t.Run("duration", func(t *testing.T) { testRoundTrip(t, Duration(5*time.Second)) })
+	t.Run("float", func(t *testing.T) { testRoundTrip(t, Float(3.14)) })
+	t.Run("bool", func(t *testing.T) { testRoundTrip(t, Bool(true)) })
+	t.Run("timestamp", func(t *testing.T) { testRoundTrip(t, Timestamp(time.Now())) })
+	t.Run("identifier", func(t *testing.T) { testRoundTrip(t, Identifier(4200)) })
 }
 
 //
@@ -186,6 +224,7 @@ func TestSerialize(t *testing.T) {
 func BenchmarkValue(b *testing.B) {
 	b.Run("string", func(b *testing.B) { benchmarkType(b, "hello world", String, Value.String) })
 	b.Run("bytes", func(b *testing.B) { benchmarkType(b, []byte("hello world"), Bytes, Value.Bytes) })
+	b.Run("hist", func(b *testing.B) { benchmarkType(b, flathist.NewHistogram(), Histogram, Value.Histogram) })
 	b.Run("int", func(b *testing.B) { benchmarkType(b, int64(42), Int, Value.Int) })
 	b.Run("uint", func(b *testing.B) { benchmarkType(b, uint64(42), Uint, Value.Uint) })
 	b.Run("float", func(b *testing.B) { benchmarkType(b, 3.14159, Float, Value.Float) })
@@ -206,6 +245,7 @@ func BenchmarkValueAsAnyFromPrimitive(b *testing.B) {
 	b.Run("zero", func(b *testing.B) { run(b, Value{}) })
 	b.Run("string", func(b *testing.B) { run(b, String("hello world")) })
 	b.Run("bytes", func(b *testing.B) { run(b, Bytes([]byte("hello world"))) })
+	b.Run("hist", func(b *testing.B) { run(b, Histogram(flathist.NewHistogram())) })
 	b.Run("int", func(b *testing.B) { run(b, Int(4200)) })
 	b.Run("uint", func(b *testing.B) { run(b, Uint(4200)) })
 	b.Run("float", func(b *testing.B) { run(b, Float(3.14)) })
@@ -220,6 +260,7 @@ func BenchmarkValueAsAnyFromPrimitive(b *testing.B) {
 //
 
 func assertEqual[T any](t *testing.T, expected, actual T) {
+	t.Helper()
 	switch exp := any(expected).(type) {
 	case time.Time:
 		assert.True(t, exp.Equal(any(actual).(time.Time)))
@@ -244,6 +285,7 @@ func runValueTest[T any](t *testing.T, of func(T) Value, as func(Value) (T, bool
 }
 
 func assertAsAnyType[T any](t *testing.T, v Value, expected T) {
+	t.Helper()
 	result := v.AsAny()
 	actual, ok := result.(T)
 	assert.That(t, ok)

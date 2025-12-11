@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/histdb/histdb/flathist"
 	"storj.io/hydrant/value"
 )
 
@@ -15,6 +16,10 @@ type Annotation struct {
 }
 
 func (a Annotation) String() string {
+	if h, ok := a.Value.Histogram(); ok {
+		tot, sum, avg, vari := h.Summary()
+		return fmt.Sprintf("%s=[tot:%v sum:%v avg:%v var:%v]", a.Key, tot, sum, avg, vari)
+	}
 	return fmt.Sprintf("%s=%v", a.Key, a.Value.AsAny())
 }
 
@@ -24,6 +29,10 @@ func String(key, val string) Annotation {
 
 func Bytes(key string, val []byte) Annotation {
 	return Annotation{Key: key, Value: value.Bytes(val)}
+}
+
+func Histogram(key string, val *flathist.Histogram) Annotation {
+	return Annotation{Key: key, Value: value.Histogram(val)}
 }
 
 func Int(key string, val int64) Annotation {

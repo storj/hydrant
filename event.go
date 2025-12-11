@@ -5,20 +5,69 @@ import (
 	"time"
 
 	"github.com/histdb/histdb/flathist"
+	"storj.io/hydrant/rw"
 	"storj.io/hydrant/value"
 )
 
 type Event []Annotation
+
+func (ev Event) AppendTo(buf []byte) []byte {
+	buf = rw.AppendVarint(buf, uint64(len(ev)))
+	for _, a := range ev {
+		buf = a.AppendTo(buf)
+	}
+	return buf
+}
+
+func (ev *Event) ReadFrom(buf []byte) ([]byte, error) {
+	r := rw.NewReader(buf)
+	count := r.ReadVarint()
+	buf, err := r.Done()
+	if err != nil {
+		return nil, err
+	}
+
+	next := make(Event, count)
+	for i := range next {
+		buf, err = next[i].ReadFrom(buf)
+		if err != nil {
+			return nil, err
+		}
+	}
+	*ev = next
+
+	return buf, nil
+}
 
 type Annotation struct {
 	Key   string
 	Value value.Value
 }
 
+func (a Annotation) AppendTo(buf []byte) []byte {
+	buf = rw.AppendVarint(buf, uint64(len(a.Key)))
+	buf = rw.AppendString(buf, a.Key)
+	buf = a.Value.AppendTo(buf)
+	return buf
+}
+
+func (a *Annotation) ReadFrom(buf []byte) ([]byte, error) {
+	r := rw.NewReader(buf)
+	a.Key = r.ReadString(r.ReadVarint())
+	rem, err := r.Done()
+	if err != nil {
+		return nil, err
+	}
+	return a.Value.ReadFrom(rem)
+}
+
 func (a Annotation) String() string {
 	if h, ok := a.Value.Histogram(); ok {
 		tot, sum, avg, vari := h.Summary()
-		return fmt.Sprintf("%s=[tot:%v sum:%v avg:%v var:%v]", a.Key, tot, sum, avg, vari)
+		min, max := h.Min(), h.Max()
+		return fmt.Sprintf(
+			"%s=[tot:%d sum:%0.1f avg:%0.1f var:%0.1f min:%0.1f max:%0.1f]",
+			a.Key, tot, sum, avg, vari, min, max)
 	}
 	return fmt.Sprintf("%s=%v", a.Key, a.Value.AsAny())
 }

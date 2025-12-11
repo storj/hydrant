@@ -2,12 +2,13 @@ package value
 
 import (
 	"bytes"
-	"encoding/binary"
 	"math"
 	"time"
 	"unsafe"
 
 	"github.com/zeebo/errs/v2"
+
+	"storj.io/hydrant/rw"
 
 	"github.com/histdb/histdb/flathist"
 )
@@ -238,28 +239,28 @@ func (v Value) AsAny() (x any) {
 func (v Value) AppendTo(buf []byte) []byte {
 	k := v.Kind()
 
-	buf = append(buf, byte(k))
+	buf = rw.AppendUint8(buf, uint8(k))
+
 	switch k {
+	case KindEmpty:
+		return buf
+
+	case KindString:
+		x, _ := v.String()
+		buf = rw.AppendVarint(buf, uint64(len(x)))
+		buf = rw.AppendString(buf, x)
+
+	case KindBytes:
+		x, _ := v.Bytes()
+		buf = rw.AppendVarint(buf, uint64(len(x)))
+		buf = rw.AppendBytes(buf, x)
+
 	case KindHistogram:
 		x, _ := v.Histogram()
 		return x.AppendTo(buf)
 
-	case KindEmpty:
-		return buf
-	}
-
-	var tmp [8]byte
-	binary.LittleEndian.PutUint64(tmp[:], v.data)
-	buf = append(buf, tmp[:]...)
-
-	switch k {
-	case KindString:
-		x, _ := v.String()
-		buf = append(buf, x...)
-
-	case KindBytes:
-		x, _ := v.Bytes()
-		buf = append(buf, x...)
+	default:
+		buf = rw.AppendVarint(buf, v.data)
 	}
 
 	return buf
@@ -268,7 +269,7 @@ func (v Value) AppendTo(buf []byte) []byte {
 func (v *Value) ReadFrom(buf []byte) ([]byte, error) {
 	*v = Value{} // zero the value for any error paths
 
-	r := reader{buf: buf}
+	r := rw.NewReader(buf)
 
 	k := Kind(r.ReadUint8())
 	if k < KindEmpty || k > KindIdentifier {
@@ -279,12 +280,10 @@ func (v *Value) ReadFrom(buf []byte) ([]byte, error) {
 	case KindEmpty:
 
 	case KindString:
-		n := r.ReadUint64() &^ (0b11 << 62)
-		*v = String(string(r.ReadBytes(n)))
+		*v = String(string(r.ReadBytes(r.ReadVarint())))
 
 	case KindBytes:
-		n := r.ReadUint64() &^ (0b11 << 62)
-		*v = Bytes(bytes.Clone(r.ReadBytes(n)))
+		*v = Bytes(bytes.Clone(r.ReadBytes(r.ReadVarint())))
 
 	case KindHistogram:
 		rem, err := r.Done()
@@ -304,7 +303,7 @@ func (v *Value) ReadFrom(buf []byte) ([]byte, error) {
 	default:
 		*v = Value{
 			ptr:  k.sentinel(),
-			data: r.ReadUint64(),
+			data: r.ReadVarint(),
 		}
 	}
 

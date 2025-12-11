@@ -56,9 +56,12 @@ func (s *Span) Done(err *error) {
 }
 
 func StartSpan(ctx context.Context, annotations ...Annotation) (context.Context, *Span) {
+	// TODO: this escapes pcs and CallersFrames allocates :(
 	var pcs [1]uintptr
 	runtime.Callers(2, pcs[:])
-	return StartSpanNamed(ctx, runtime.FuncForPC(pcs[0]).Name(), annotations...)
+	frame, _ := runtime.CallersFrames(pcs[:]).Next()
+
+	return StartSpanNamed(ctx, frame.Function, annotations...)
 }
 
 func StartSpanNamed(ctx context.Context, name string, annotations ...Annotation) (context.Context, *Span) {

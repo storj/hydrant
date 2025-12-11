@@ -1,7 +1,9 @@
 github.com/aclements/go-perfevent v0.0.0-20240226150523-a53be9569332 h1:bobL45cu5xfjJpBXM3s5QBrrAXGcAUxgGW6JhR7ngN0=
 github.com/aclements/go-perfevent v0.0.0-20240226150523-a53be9569332/go.mod h1:u+1SPFBxHUOipjVFFOIm0uXdZr4S3dJcrrZwPDzK4Gs=
-github.com/histdb/histdb v0.0.0-20251211161428-63646a899d08 h1:D8fLV/ssqWwDwf439GscQQ3L3R2rkDRF1DmlCBrVQ+4=
-github.com/histdb/histdb v0.0.0-20251211161428-63646a899d08/go.mod h1:23wHxNqzddRYlusUP3gZZhszCAqV2uuLLtW9GCbzCig=
+github.com/histdb/histdb v0.0.0-20251211201615-231c21b979e2 h1:wcVzo5xT/GHYF4FoOOS8gGat7z7Vi/r39cMV3bx0zmU=
+github.com/histdb/histdb v0.0.0-20251211201615-231c21b979e2/go.mod h1:23wHxNqzddRYlusUP3gZZhszCAqV2uuLLtW9GCbzCig=
+github.com/klauspost/compress v1.18.2 h1:iiPHWW0YrcFgpBYhsA6D1+fqHssJscY/Tm/y2Uqnapk=
+github.com/klauspost/compress v1.18.2/go.mod h1:R0h/fSBs8DE4ENlcrlib3PsXS61voFxhIs2DeRhCvJ4=
 github.com/zeebo/assert v0.0.0-20181109011804-10f827ce2ed6/go.mod h1:yssERNPivllc1yU3BvpjYI5BUW+zglcz6QWqeVRL5t0=
 github.com/zeebo/assert v1.3.0/go.mod h1:Pq9JiuJQpG8JLJdtkwrJESF0Foym2/D9XMU5ciN/wJ0=
 github.com/zeebo/assert v1.3.1 h1:vukIABvugfNMZMQO1ABsyQDJDTVQbn+LWSMy1ol1h6A=

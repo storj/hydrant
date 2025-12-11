@@ -29,7 +29,7 @@ func MustRegisterOSAnnotations(s *Store) {
 }
 
 func init() {
-	MustRegisterRuntimeAnnotations(DefaultStore)
+	MustRegisterProcessAnnotations(DefaultStore)
 	MustRegisterOSAnnotations(DefaultStore)
 }
 

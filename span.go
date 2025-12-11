@@ -56,7 +56,8 @@ func (s *Span) Done(err *error) {
 }
 
 func StartSpan(ctx context.Context, annotations ...Annotation) (context.Context, *Span) {
-	// TODO: this escapes pcs and CallersFrames allocates :(
+	// TODO: this escapes pcs and CallersFrames allocates but every other option either depends on
+	// internals or is broken :(
 	var pcs [1]uintptr
 	runtime.Callers(2, pcs[:])
 	frame, _ := runtime.CallersFrames(pcs[:]).Next()
@@ -95,7 +96,7 @@ func StartRemoteSpanNamed(ctx context.Context, name string, parent, task uint64,
 			sysIdxTaskId:    Identifier("task_id", task),
 		},
 	}
-	s.ev = s.buf[:]
+	s.ev = append(s.buf[:], annotations...)
 
 	return (*contextSpan)(s), s
 }

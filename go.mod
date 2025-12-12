@@ -4,7 +4,7 @@ go 1.25.3
 
 require (
 	github.com/gorilla/handlers v1.5.2
-	github.com/histdb/histdb v0.0.0-20251211201615-231c21b979e2
+	github.com/histdb/histdb v0.0.0-20251212195006-ad762037f478
 	github.com/klauspost/compress v1.18.2
 	github.com/zeebo/assert v1.3.1
 	github.com/zeebo/clingy v0.0.0-20250609200504-bc547d5f79c0
@@ -23,5 +23,3 @@ require (
 	github.com/zeebo/xxh3 v1.0.2 // indirect
 	golang.org/x/sys v0.17.0 // indirect
 )
-
-replace github.com/histdb/histdb => /home/jeff/go/src/github.com/histdb/histdb

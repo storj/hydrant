@@ -80,7 +80,7 @@ function displayResults(data, mergedRequested) {
 
     if (mergedRequested && data.Data.length === 1) {
         var resultItem = document.createElement('div');
-        resultItem.className = 'result-item';
+        resultItem.className = 'result-item merged-result';
 
         var header = document.createElement('div');
         header.className = 'result-header';
@@ -138,10 +138,22 @@ function renderHistogram(container, histData) {
     var stats = document.createElement('div');
     stats.className = 'stats';
 
+    function formatStatValue(value) {
+        if (Math.abs(value) < 0.001 && value !== 0) {
+            return value.toExponential(2);
+        } else if (Math.abs(value) < 1) {
+            return value.toFixed(6).replace(/\.?0+$/, '');
+        } else if (Math.abs(value) < 100) {
+            return value.toFixed(4).replace(/\.?0+$/, '');
+        } else {
+            return value.toFixed(2);
+        }
+    }
+
     addStat(stats, 'Total', histData.Total);
-    addStat(stats, 'Sum', histData.Sum.toFixed(2));
-    addStat(stats, 'Average', histData.Avg.toFixed(2));
-    addStat(stats, 'Variance', histData.Vari.toFixed(2));
+    addStat(stats, 'Sum', formatStatValue(histData.Sum));
+    addStat(stats, 'Average', formatStatValue(histData.Avg));
+    addStat(stats, 'Variance', formatStatValue(histData.Vari));
     addStat(stats, 'Min', histData.Min);
     addStat(stats, 'Max', histData.Max);
 
@@ -154,6 +166,16 @@ function renderHistogram(container, histData) {
         var quantilesTitle = document.createElement('h3');
         quantilesTitle.textContent = 'Quantiles';
         quantilesDiv.appendChild(quantilesTitle);
+
+        var svg = createQuantilesSVG(histData.Quantiles);
+        quantilesDiv.appendChild(svg);
+
+        var rawDataDetails = document.createElement('details');
+        rawDataDetails.className = 'raw-data-details';
+
+        var rawDataSummary = document.createElement('summary');
+        rawDataSummary.textContent = 'Show raw data';
+        rawDataDetails.appendChild(rawDataSummary);
 
         var table = document.createElement('table');
         var thead = document.createElement('thead');
@@ -173,22 +195,54 @@ function renderHistogram(container, histData) {
         var tbody = document.createElement('tbody');
         var precision = findMinPrecision(histData.Quantiles);
 
-        histData.Quantiles.forEach(function(quantile) {
+        var ranges = [];
+        var currentRange = null;
+
+        histData.Quantiles.forEach(function(quantile, index) {
+            if (!currentRange) {
+                currentRange = {
+                    startQ: quantile.Q,
+                    endQ: quantile.Q,
+                    value: quantile.V
+                };
+            } else if (currentRange.value === quantile.V) {
+                currentRange.endQ = quantile.Q;
+            } else {
+                ranges.push(currentRange);
+                currentRange = {
+                    startQ: quantile.Q,
+                    endQ: quantile.Q,
+                    value: quantile.V
+                };
+            }
+        });
+
+        if (currentRange) {
+            ranges.push(currentRange);
+        }
+
+        ranges.forEach(function(range) {
             var row = document.createElement('tr');
 
             var qCell = document.createElement('td');
-            qCell.textContent = quantile.Q.toFixed(precision);
+            if (range.startQ === range.endQ) {
+                qCell.textContent = range.startQ.toFixed(precision);
+            } else {
+                qCell.textContent = range.startQ.toFixed(precision) + ' - ' + range.endQ.toFixed(precision);
+            }
             row.appendChild(qCell);
 
             var vCell = document.createElement('td');
-            vCell.textContent = quantile.V;
+            vCell.textContent = range.value;
             row.appendChild(vCell);
 
             tbody.appendChild(row);
         });
 
         table.appendChild(tbody);
-        quantilesDiv.appendChild(table);
+        rawDataDetails.appendChild(table);
+        quantilesDiv.appendChild(rawDataDetails);
+
         container.appendChild(quantilesDiv);
     }
 }
@@ -371,6 +425,184 @@ function findMinPrecision(quantiles) {
         }
     }
     return 16;
+}
+
+function createQuantilesSVG(quantiles) {
+    var width = 800;
+    var height = 400;
+    var padding = { top: 20, right: 20, bottom: 50, left: 100 };
+    var graphWidth = width - padding.left - padding.right;
+    var graphHeight = height - padding.top - padding.bottom;
+
+    var minV = Math.min.apply(null, quantiles.map(function(q) { return q.V; }));
+    var maxV = Math.max.apply(null, quantiles.map(function(q) { return q.V; }));
+    var rangeV = maxV - minV;
+    if (rangeV === 0) rangeV = 1;
+
+    function formatValue(value) {
+        if (Math.abs(value) < 0.001 && value !== 0) {
+            return value.toExponential(2);
+        } else if (Math.abs(value) < 1) {
+            return value.toFixed(6).replace(/\.?0+$/, '');
+        } else if (Math.abs(value) < 100) {
+            return value.toFixed(4).replace(/\.?0+$/, '');
+        } else {
+            return value.toFixed(2);
+        }
+    }
+
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('width', width);
+    svg.setAttribute('height', height);
+    svg.setAttribute('class', 'quantiles-svg');
+
+    var g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    g.setAttribute('transform', 'translate(' + padding.left + ',' + padding.top + ')');
+
+    var xAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    xAxis.setAttribute('x1', 0);
+    xAxis.setAttribute('y1', graphHeight);
+    xAxis.setAttribute('x2', graphWidth);
+    xAxis.setAttribute('y2', graphHeight);
+    xAxis.setAttribute('stroke', '#333');
+    xAxis.setAttribute('stroke-width', '2');
+    g.appendChild(xAxis);
+
+    var yAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    yAxis.setAttribute('x1', 0);
+    yAxis.setAttribute('y1', 0);
+    yAxis.setAttribute('x2', 0);
+    yAxis.setAttribute('y2', graphHeight);
+    yAxis.setAttribute('stroke', '#333');
+    yAxis.setAttribute('stroke-width', '2');
+    g.appendChild(yAxis);
+
+    for (var i = 0; i <= 10; i++) {
+        var x = (i / 10) * graphWidth;
+        var tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        tick.setAttribute('x1', x);
+        tick.setAttribute('y1', graphHeight);
+        tick.setAttribute('x2', x);
+        tick.setAttribute('y2', graphHeight + 5);
+        tick.setAttribute('stroke', '#333');
+        tick.setAttribute('stroke-width', '1');
+        g.appendChild(tick);
+
+        var label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.setAttribute('x', x);
+        label.setAttribute('y', graphHeight + 20);
+        label.setAttribute('text-anchor', 'middle');
+        label.setAttribute('class', 'axis-label');
+        label.textContent = (i / 10).toFixed(1);
+        g.appendChild(label);
+    }
+
+    var yTicks = 5;
+    for (var i = 0; i <= yTicks; i++) {
+        var y = graphHeight - (i / yTicks) * graphHeight;
+        var tick = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        tick.setAttribute('x1', -5);
+        tick.setAttribute('y1', y);
+        tick.setAttribute('x2', 0);
+        tick.setAttribute('y2', y);
+        tick.setAttribute('stroke', '#333');
+        tick.setAttribute('stroke-width', '1');
+        g.appendChild(tick);
+
+        var gridLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        gridLine.setAttribute('x1', 0);
+        gridLine.setAttribute('y1', y);
+        gridLine.setAttribute('x2', graphWidth);
+        gridLine.setAttribute('y2', y);
+        gridLine.setAttribute('stroke', '#e0e0e0');
+        gridLine.setAttribute('stroke-width', '1');
+        g.appendChild(gridLine);
+
+        var value = minV + (i / yTicks) * rangeV;
+        var label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        label.setAttribute('x', -10);
+        label.setAttribute('y', y + 4);
+        label.setAttribute('text-anchor', 'end');
+        label.setAttribute('class', 'axis-label');
+        label.textContent = formatValue(value);
+        g.appendChild(label);
+    }
+
+    var pathData = '';
+    quantiles.forEach(function(quantile, index) {
+        var x = quantile.Q * graphWidth;
+        var y = graphHeight - ((quantile.V - minV) / rangeV) * graphHeight;
+
+        if (index === 0) {
+            pathData += 'M ' + x + ' ' + y;
+        } else {
+            pathData += ' L ' + x + ' ' + y;
+        }
+    });
+
+    var path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.setAttribute('d', pathData);
+    path.setAttribute('stroke', '#007bff');
+    path.setAttribute('stroke-width', '2');
+    path.setAttribute('fill', 'none');
+    g.appendChild(path);
+
+    var tooltipDiv = document.createElement('div');
+    tooltipDiv.className = 'svg-tooltip';
+    tooltipDiv.style.display = 'none';
+    document.body.appendChild(tooltipDiv);
+
+    quantiles.forEach(function(quantile) {
+        var x = quantile.Q * graphWidth;
+        var y = graphHeight - ((quantile.V - minV) / rangeV) * graphHeight;
+
+        var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('cx', x);
+        circle.setAttribute('cy', y);
+        circle.setAttribute('r', 4);
+        circle.setAttribute('fill', '#007bff');
+        circle.setAttribute('class', 'quantile-point');
+        circle.style.cursor = 'pointer';
+
+        circle.addEventListener('mouseenter', function(e) {
+            var precision = findMinPrecision(quantiles);
+            tooltipDiv.innerHTML = '<strong>Quantile:</strong> ' + quantile.Q.toFixed(precision) + '<br><strong>Value:</strong> ' + formatValue(quantile.V);
+            tooltipDiv.style.display = 'block';
+            circle.setAttribute('r', 6);
+        });
+
+        circle.addEventListener('mousemove', function(e) {
+            tooltipDiv.style.left = (e.pageX + 10) + 'px';
+            tooltipDiv.style.top = (e.pageY + 10) + 'px';
+        });
+
+        circle.addEventListener('mouseleave', function() {
+            tooltipDiv.style.display = 'none';
+            circle.setAttribute('r', 4);
+        });
+
+        g.appendChild(circle);
+    });
+
+    var xAxisLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    xAxisLabel.setAttribute('x', graphWidth / 2);
+    xAxisLabel.setAttribute('y', graphHeight + 40);
+    xAxisLabel.setAttribute('text-anchor', 'middle');
+    xAxisLabel.setAttribute('class', 'axis-title');
+    xAxisLabel.textContent = 'Quantile';
+    g.appendChild(xAxisLabel);
+
+    var yAxisLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    yAxisLabel.setAttribute('x', -graphHeight / 2);
+    yAxisLabel.setAttribute('y', -60);
+    yAxisLabel.setAttribute('text-anchor', 'middle');
+    yAxisLabel.setAttribute('transform', 'rotate(-90)');
+    yAxisLabel.setAttribute('class', 'axis-title');
+    yAxisLabel.textContent = 'Value';
+    g.appendChild(yAxisLabel);
+
+    svg.appendChild(g);
+    return svg;
 }
 
 document.getElementById('refreshConfig').addEventListener('click', function() {

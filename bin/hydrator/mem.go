@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/hex"
-	"fmt"
 	"strconv"
 	"strings"
 	"sync"
@@ -25,8 +24,6 @@ func (m *MemStore) Index() *memindex.T                      { return &m.idx }
 func (m *MemStore) Histogram(id uint32) *flathist.Histogram { return m.hists[id] }
 
 func (m *MemStore) Submit(ctx context.Context, ev hydrant.Event) {
-	fmt.Println("mem submit", ev)
-
 	hasHist := false
 
 	buf := make([]byte, 0, 64)

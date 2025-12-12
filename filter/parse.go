@@ -10,32 +10,32 @@ import (
 )
 
 type Filter struct {
-	parser *Parser
+	env    *Environment
 	filter string
 	prog   []inst
 	vals   []value.Value
 }
 
 // TODO: rename to environment or something
-type Parser struct {
+type Environment struct {
 	funcs []func(*EvalState) bool
 	names map[string]uint32
 }
 
-func (p *Parser) SetFunction(name string, fn func(*EvalState) bool) {
-	if p.names == nil {
-		p.names = map[string]uint32{"key": 0, "has": 1}
-		p.funcs = append(p.funcs, intrinsicKey, intrinsicHas)
+func (env *Environment) SetFunction(name string, fn func(*EvalState) bool) {
+	if env.names == nil {
+		env.names = map[string]uint32{"key": 0, "has": 1}
+		env.funcs = append(env.funcs, intrinsicKey, intrinsicHas)
 	}
 	if name == "key" || name == "has" {
 		panic("cannot override builtin function: " + name)
 	}
-	if n, ok := p.names[name]; !ok {
-		n = uint32(len(p.funcs))
-		p.names[name] = n
-		p.funcs = append(p.funcs, fn)
+	if n, ok := env.names[name]; !ok {
+		n = uint32(len(env.funcs))
+		env.names[name] = n
+		env.funcs = append(env.funcs, fn)
 	} else {
-		p.funcs[n] = fn
+		env.funcs[n] = fn
 	}
 }
 
@@ -62,17 +62,17 @@ func intrinsicHas(es *EvalState) bool {
 	return true
 }
 
-func (p *Parser) Parse(filter string) (*Filter, error) {
+func (env *Environment) Parse(filter string) (*Filter, error) {
 	toks, err := tokens(filter, nil)
 	if err != nil {
 		return nil, err
 	}
 
 	ps := &parseState{
-		parser: p,
+		parser: env,
 		toks:   toks,
 		into: &Filter{
-			parser: p,
+			env:    env,
 			filter: filter,
 		},
 	}
@@ -156,7 +156,7 @@ func optimize(prog []inst) []inst {
 }
 
 type parseState struct {
-	parser *Parser
+	parser *Environment
 	toks   []token
 	tokn   uint
 	into   *Filter

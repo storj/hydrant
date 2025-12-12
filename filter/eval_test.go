@@ -11,7 +11,7 @@ import (
 
 func TestEvalShortCircuit(t *testing.T) {
 	var es EvalState
-	var p Parser
+	var p Environment
 	SetBuiltins(&p)
 	p.SetFunction("panic", func(es *EvalState) bool { t.Fatal("panic called"); return false })
 
@@ -42,7 +42,7 @@ func TestEvalShortCircuit(t *testing.T) {
 
 func TestEvalDoubleKey(t *testing.T) {
 	var es EvalState
-	var p Parser
+	var p Environment
 	SetBuiltins(&p)
 
 	filter, err := p.Parse(`eq(key(key(foo)), bar)`)
@@ -62,7 +62,7 @@ func TestEvalDoubleKey(t *testing.T) {
 //
 
 func BenchmarkEval(b *testing.B) {
-	var p Parser
+	var p Environment
 	SetBuiltins(&p)
 
 	filter, err := p.Parse(`

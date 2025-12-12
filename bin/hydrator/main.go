@@ -7,10 +7,15 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/gorilla/handlers"
 	"github.com/zeebo/clingy"
 	"github.com/zeebo/errs/v2"
+
+	"storj.io/hydrant/backend"
+	"storj.io/hydrant/config"
+	"storj.io/hydrant/filter"
 )
 
 func main() {
@@ -45,7 +50,32 @@ func (r *root) Execute(ctx context.Context) (err error) {
 	// TODO: this needs to load a config of some sort and use it to make some
 	// sort of submitter that eventually submits down into a memstore.
 
-	var mem MemStore
+	mem := new(MemStore)
+	env := new(filter.Environment)
+	filter.SetBuiltins(env)
+	source := &FixedSource{dests: []config.Destination{
+		{
+			URL:                 "self",
+			AggregationInterval: config.Duration(10 * time.Second),
+			Queries: []config.Query{
+				{
+					Filter:  "has(span_id)",
+					GroupBy: []config.Expression{"name", "success"},
+				},
+			},
+		},
+	}}
+
+	b := backend.New([]backend.Source{source}, mem, env)
+
+	go b.Run(ctx)
+	b.Trigger()
+
+	select {
+	case <-b.FirstLoad():
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 
 	lis, err := net.Listen("tcp", r.addr)
 	if err != nil {
@@ -61,7 +91,7 @@ func (r *root) Execute(ctx context.Context) (err error) {
 			lis,
 			handlers.LoggingHandler(
 				clingy.Stdout(ctx),
-				NewHandler(&mem),
+				NewHandler(b, mem, source),
 			),
 		),
 	)

@@ -6,76 +6,92 @@ import (
 	"time"
 
 	"storj.io/hydrant"
+	"storj.io/hydrant/aggregator"
 	"storj.io/hydrant/config"
 	"storj.io/hydrant/filter"
 	"storj.io/hydrant/process"
 	"storj.io/hydrant/protocol"
+	"storj.io/hydrant/utils"
 )
 
 const (
 	maxAggregationInterval = 24 * time.Hour
-	minAggregationInterval = time.Minute
+	minAggregationInterval = 10 * time.Second
 )
 
 type Destination struct {
 	Config config.Destination
 
-	queries   []*Query
-	submitter *protocol.HTTPSubmitter
+	aggregators []*aggregator.Aggregator
+	submitter   hydrant.Submitter
+	http        *protocol.HTTPSubmitter
 }
 
-func New(cfg config.Destination, p *filter.Parser, s *process.Store) (
-	*Destination, error) {
+var _ hydrant.Submitter = (*Destination)(nil)
 
-	submitter := protocol.NewHTTPSubmitter(cfg.URL, process.NewSelected(s, cfg.GlobalFields))
+func New(cfg config.Destination, self hydrant.Submitter, filterEnv *filter.Environment, store *process.Store) (*Destination, error) {
+	submitter, http := self, (*protocol.HTTPSubmitter)(nil)
+	if cfg.URL != "self" {
+		http = protocol.NewHTTPSubmitter(cfg.URL, process.NewSelected(store, cfg.GlobalFields))
+		submitter = http
+	}
 
-	queries := make([]*Query, 0, len(cfg.Queries))
+	aggregators := make([]*aggregator.Aggregator, 0, len(cfg.Queries))
 	for i := range cfg.Queries {
-		q, err := NewQuery(p, submitter, cfg.Queries[i])
+		agg, err := aggregator.New(filterEnv, submitter, cfg.Queries[i])
 		if err != nil {
 			return nil, err
 		}
-		queries = append(queries, q)
+		aggregators = append(aggregators, agg)
 	}
 
 	return &Destination{
-		Config:    cfg,
-		queries:   queries,
-		submitter: submitter,
+		Config: cfg,
+
+		aggregators: aggregators,
+		submitter:   submitter,
+		http:        http,
 	}, nil
 }
 
 func (d *Destination) Run(ctx context.Context) {
-	// TODO: i think we need a final flush?
-
 	var wg sync.WaitGroup
+
 	wg.Go(func() {
-		d.submitter.Run(ctx)
+		if d.http != nil {
+			d.http.Run(ctx)
+		}
 	})
+
 	wg.Go(func() {
 		interval := time.Duration(d.Config.AggregationInterval)
 		interval = max(interval, minAggregationInterval)
 		interval = min(interval, maxAggregationInterval)
-		nextTick := time.After(jitter(interval))
+
+		nextTick := time.After(utils.Jitter(interval))
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case <-nextTick:
 			}
-			nextTick = time.After(jitter(interval))
-			for _, q := range d.queries {
-				q.Flush(ctx)
+			nextTick = time.After(utils.Jitter(interval))
+
+			for _, agg := range d.aggregators {
+				agg.Flush(ctx)
 			}
 		}
 	})
-	wg.Wait()
-}
 
-func (d *Destination) Submit(ctx context.Context, ev hydrant.Event) {
-	for _, query := range d.queries {
-		query.Submit(ctx, ev)
+	wg.Wait()
+
+	for _, agg := range d.aggregators {
+		agg.Flush(context.WithoutCancel(ctx))
 	}
 }
 
-var _ hydrant.Submitter = (*Destination)(nil)
+func (d *Destination) Submit(ctx context.Context, ev hydrant.Event) {
+	for _, agg := range d.aggregators {
+		agg.Submit(ctx, ev)
+	}
+}

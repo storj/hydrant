@@ -33,10 +33,10 @@ func (es *EvalState) Evaluate(f *Filter, ev hydrant.Event) bool {
 			es.Push(f.vals[i.arg])
 
 		case instCall:
-			if int(i.arg) >= len(f.parser.funcs) {
+			if int(i.arg) >= len(f.env.funcs) {
 				return false
 			}
-			if !f.parser.funcs[i.arg](es) {
+			if !f.env.funcs[i.arg](es) {
 				return false
 			}
 

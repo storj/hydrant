@@ -116,11 +116,19 @@ function displayResults(data, mergedRequested) {
             var resultItem = document.createElement('div');
             resultItem.className = 'result-item';
 
-            var title = document.createElement('h2');
-            title.textContent = name;
-            resultItem.appendChild(title);
+            var details = document.createElement('details');
 
-            renderHistogram(resultItem, data.Data[index]);
+            var summary = document.createElement('summary');
+            summary.className = 'result-summary';
+            summary.textContent = name;
+            details.appendChild(summary);
+
+            var content = document.createElement('div');
+            content.className = 'result-content';
+            renderHistogram(content, data.Data[index]);
+            details.appendChild(content);
+
+            resultItem.appendChild(details);
             resultsDiv.appendChild(resultItem);
         });
     }
@@ -163,7 +171,7 @@ function renderHistogram(container, histData) {
         table.appendChild(thead);
 
         var tbody = document.createElement('tbody');
-        var precision = histData.MinPrecision || 2;
+        var precision = findMinPrecision(histData.Quantiles);
 
         histData.Quantiles.forEach(function(quantile) {
             var row = document.createElement('tr');
@@ -221,6 +229,10 @@ tabButtons.forEach(function(button) {
 
         if (targetTab === 'explore' && !window.exploreLoaded) {
             loadExploreKeys();
+        }
+
+        if (targetTab === 'config' && !window.configLoaded) {
+            loadConfig();
         }
     });
 });
@@ -338,4 +350,128 @@ function displayValues(values, container) {
     });
 
     container.appendChild(valueList);
+}
+
+function findMinPrecision(quantiles) {
+    for (var i = 0; i <= 16; i++) {
+        var seen = {};
+        var hasDup = false;
+
+        for (var j = 0; j < quantiles.length; j++) {
+            var formatted = quantiles[j].Q.toFixed(i);
+            if (seen[formatted]) {
+                hasDup = true;
+                break;
+            }
+            seen[formatted] = true;
+        }
+
+        if (!hasDup) {
+            return i;
+        }
+    }
+    return 16;
+}
+
+document.getElementById('refreshConfig').addEventListener('click', function() {
+    window.configLoaded = false;
+    loadConfig();
+});
+
+document.getElementById('saveConfig').addEventListener('click', function() {
+    saveConfig();
+});
+
+function loadConfig() {
+    var loadingDiv = document.getElementById('configLoading');
+    var errorDiv = document.getElementById('configError');
+    var successDiv = document.getElementById('configSuccess');
+    var editor = document.getElementById('configEditor');
+    var refreshButton = document.getElementById('refreshConfig');
+    var saveButton = document.getElementById('saveConfig');
+
+    loadingDiv.style.display = 'block';
+    errorDiv.style.display = 'none';
+    successDiv.style.display = 'none';
+    editor.value = '';
+    refreshButton.disabled = true;
+    saveButton.disabled = true;
+
+    fetch('/api/config', {
+        method: 'GET'
+    })
+    .then(function(response) {
+        if (!response.ok) {
+            throw new Error('Failed to load config');
+        }
+        return response.json();
+    })
+    .then(function(config) {
+        loadingDiv.style.display = 'none';
+        refreshButton.disabled = false;
+        saveButton.disabled = false;
+        window.configLoaded = true;
+        editor.value = JSON.stringify(config, null, 4);
+    })
+    .catch(function(error) {
+        loadingDiv.style.display = 'none';
+        refreshButton.disabled = false;
+        saveButton.disabled = false;
+        errorDiv.textContent = 'Error: ' + error.message;
+        errorDiv.style.display = 'block';
+    });
+}
+
+function saveConfig() {
+    var loadingDiv = document.getElementById('configLoading');
+    var errorDiv = document.getElementById('configError');
+    var successDiv = document.getElementById('configSuccess');
+    var editor = document.getElementById('configEditor');
+    var refreshButton = document.getElementById('refreshConfig');
+    var saveButton = document.getElementById('saveConfig');
+
+    errorDiv.style.display = 'none';
+    successDiv.style.display = 'none';
+
+    var config;
+    try {
+        config = JSON.parse(editor.value);
+    } catch (e) {
+        errorDiv.textContent = 'Error: Invalid JSON - ' + e.message;
+        errorDiv.style.display = 'block';
+        return;
+    }
+
+    loadingDiv.style.display = 'block';
+    refreshButton.disabled = true;
+    saveButton.disabled = true;
+
+    fetch('/api/config', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(config)
+    })
+    .then(function(response) {
+        if (!response.ok) {
+            return response.text().then(function(text) {
+                throw new Error(text || 'Failed to save config');
+            });
+        }
+        loadingDiv.style.display = 'none';
+        refreshButton.disabled = false;
+        saveButton.disabled = false;
+        successDiv.style.display = 'block';
+        setTimeout(function() {
+            successDiv.style.display = 'none';
+        }, 3000);
+    })
+    .catch(function(error) {
+        loadingDiv.style.display = 'none';
+        refreshButton.disabled = false;
+        saveButton.disabled = false;
+        errorDiv.textContent = 'Error: ' + error.message;
+        errorDiv.style.display = 'block';
+    });
 }

@@ -7,7 +7,7 @@ import (
 )
 
 func TestParse(t *testing.T) {
-	var p Parser
+	var p Environment
 	SetBuiltins(&p)
 
 	filter, err := p.Parse(`eq(key("foo"), "b\tar") && (has("test") || lt(rand(), 0.5))`)
@@ -18,7 +18,7 @@ func TestParse(t *testing.T) {
 }
 
 func BenchmarkParse(b *testing.B) {
-	var p Parser
+	var p Environment
 	SetBuiltins(&p)
 
 	query := `(eq(key("foo"), "bar") && has("test")) || lt(rand(), 0.5)`

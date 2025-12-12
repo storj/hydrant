@@ -1,52 +1,54 @@
 package aggregator
 
 import (
-	"fmt"
-	"io"
-	"net/http"
-	"net/http/httptest"
+	"context"
 	"testing"
+	"time"
+
+	"github.com/zeebo/assert"
 
 	"storj.io/hydrant"
 	"storj.io/hydrant/config"
 	"storj.io/hydrant/filter"
 )
 
-func TestWireEverythingUp(t *testing.T) {
-	results := make(chan string)
+func TestAggregator(t *testing.T) {
+	env := new(filter.Environment)
+	filter.SetBuiltins(env)
+	var bs bufferSubmitter
 
-	var destinationURL string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			fmt.Fprintf(w, `
-			{"destinations": [{
-				"url": "%s",
-				"aggregation_interval": "1s",
-				"queries": [{ "filter": "has(message)" }]
-			}]}`, destinationURL)
-		case http.MethodPost:
-			data, err := io.ReadAll(r.Body)
-			if err != nil {
-				t.Log(err)
-				t.Fail()
-				return
-			}
-			results <- string(data)
+	q, err := New(env, &bs, config.Query{
+		Filter:  config.Expression("eq(key(name), test) && lt(key(dur), 1s)"),
+		GroupBy: []config.Expression{"group"},
+	})
+	assert.NoError(t, err)
+
+	ev := func(name string, dur time.Duration, group string, count int) hydrant.Event {
+		return hydrant.Event{
+			hydrant.String("name", name),
+			hydrant.Duration("dur", dur),
+			hydrant.String("group", group),
+			hydrant.Int("count", int64(count)),
 		}
-	}))
-	defer srv.Close()
-	destinationURL = srv.URL
+	}
 
-	p := new(filter.Parser)
-	filter.SetBuiltins(p)
+	q.Submit(t.Context(), ev("wrong", 500*time.Millisecond, "group1", 1))
+	q.Submit(t.Context(), ev("test", 500*time.Millisecond, "group1", 1))
+	q.Submit(t.Context(), ev("test", 500*time.Millisecond, "group1", 1))
+	q.Submit(t.Context(), ev("test", 5000*time.Millisecond, "group1", 1))
+	q.Submit(t.Context(), ev("test", 500*time.Millisecond, "group2", 10))
+	q.Submit(t.Context(), ev("test", 50*time.Millisecond, "group2", 1))
+	q.Submit(t.Context(), ev("test", 5000*time.Millisecond, "group2", 1))
+	q.Flush(t.Context())
+	q.Flush(t.Context()) // should do nothing
 
-	a := NewAggregator([]Source{config.NewSource(srv.URL)}, p)
-	go a.Run(t.Context())
+	for _, ev := range bs {
+		t.Log(ev)
+	}
+}
 
-	<-a.WaitForFirstLoad()
+type bufferSubmitter []hydrant.Event
 
-	hydrant.Log(hydrant.WithSubmitter(t.Context(), a), "hello")
-
-	t.Log(<-results)
+func (bs *bufferSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
+	*bs = append(*bs, ev)
 }

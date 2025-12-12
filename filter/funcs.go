@@ -10,17 +10,17 @@ import (
 
 type Funcs struct{}
 
-func SetBuiltins(p *Parser) {
-	p.SetFunction("since", Funcs{}.Since)
-	p.SetFunction("not", Funcs{}.Not)
-	p.SetFunction("true", Funcs{}.True)
-	p.SetFunction("false", Funcs{}.False)
-	p.SetFunction("rand", Funcs{}.Rand)
-	p.SetFunction("eq", Funcs{}.Equal)
-	p.SetFunction("lt", Funcs{}.Less)
-	p.SetFunction("lte", Funcs{}.LessEqual)
-	p.SetFunction("gt", Funcs{}.Greater)
-	p.SetFunction("gte", Funcs{}.GreaterEqual)
+func SetBuiltins(env *Environment) {
+	env.SetFunction("since", Funcs{}.Since)
+	env.SetFunction("not", Funcs{}.Not)
+	env.SetFunction("true", Funcs{}.True)
+	env.SetFunction("false", Funcs{}.False)
+	env.SetFunction("rand", Funcs{}.Rand)
+	env.SetFunction("eq", Funcs{}.Equal)
+	env.SetFunction("lt", Funcs{}.Less)
+	env.SetFunction("lte", Funcs{}.LessEqual)
+	env.SetFunction("gt", Funcs{}.Greater)
+	env.SetFunction("gte", Funcs{}.GreaterEqual)
 }
 
 func (Funcs) Since(es *EvalState) bool {

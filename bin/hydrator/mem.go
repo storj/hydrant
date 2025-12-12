@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"encoding/hex"
+	"fmt"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/histdb/histdb/flathist"
@@ -23,12 +25,17 @@ func (m *MemStore) Index() *memindex.T                      { return &m.idx }
 func (m *MemStore) Histogram(id uint32) *flathist.Histogram { return m.hists[id] }
 
 func (m *MemStore) Submit(ctx context.Context, ev hydrant.Event) {
+	fmt.Println("mem submit", ev)
+
 	hasHist := false
 
 	buf := make([]byte, 0, 64)
 	for _, ann := range ev {
 		if ann.Value.Kind() == value.KindHistogram {
 			hasHist = true
+			continue
+		}
+		if strings.HasPrefix(ann.Key, "agg:") {
 			continue
 		}
 
@@ -86,6 +93,17 @@ func (m *MemStore) Submit(ctx context.Context, ev hydrant.Event) {
 	}
 
 	if !hasHist {
+		metric := append(buf, '_')
+
+		m.mu.Lock()
+		_, id, _, created := m.idx.Add(metric, nil, nil)
+		if created {
+			m.hists = append(m.hists, flathist.NewHistogram())
+		}
+		into := m.hists[id]
+		m.mu.Unlock()
+
+		into.Observe(1)
 		return
 	}
 

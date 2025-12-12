@@ -2,168 +2,184 @@ package aggregator
 
 import (
 	"context"
-	"reflect"
+	"maps"
 	"slices"
+	"strings"
 	"sync"
 	"time"
+	"unique"
 
-	"github.com/zeebo/swaparoo"
+	"github.com/histdb/histdb/flathist"
 
 	"storj.io/hydrant"
 	"storj.io/hydrant/config"
-	"storj.io/hydrant/destination"
 	"storj.io/hydrant/filter"
-	"storj.io/hydrant/process"
+	"storj.io/hydrant/group"
+	"storj.io/hydrant/value"
 )
 
-const (
-	maxInterval = 24 * time.Hour
-	minInterval = time.Minute
-)
+var evalPool = sync.Pool{New: func() any { return new(filter.EvalState) }}
 
-type Source interface {
-	Load(context.Context) (cfg config.SourceConfig, dsts []config.Destination, err error)
+type aggregate struct {
+	event    hydrant.Event
+	groupSet map[string]struct{}
+	hists    map[string]*flathist.Histogram
+	histOrd  []string
+	excluded map[string]struct{}
 }
 
 type Aggregator struct {
-	cfgs []Source
-	p    *filter.Parser
+	filter    *filter.Filter
+	grouper   *group.Grouper
+	submitter hydrant.Submitter
 
-	mu   sync.Mutex
-	swap swaparoo.Tracker
-	subs [2][][]runningDest
-
-	once   sync.Once
-	loaded chan struct{}
-}
-
-type runningDest struct {
-	dest   *destination.Destination
-	cancel func()
-	done   chan struct{}
+	mu     sync.Mutex
+	groups map[unique.Handle[string]]*aggregate
+	epoch  time.Time
 }
 
 var _ hydrant.Submitter = (*Aggregator)(nil)
 
-func NewAggregator(cfgs []Source, p *filter.Parser) *Aggregator {
+func New(filterEnv *filter.Environment, submitter hydrant.Submitter, cfg config.Query) (*Aggregator, error) {
+	fil, err := filterEnv.Parse(cfg.Filter.String())
+	if err != nil {
+		return nil, err
+	}
+
+	var grouper *group.Grouper
+	if len(cfg.GroupBy) > 0 {
+		var keys []string
+		for _, expr := range cfg.GroupBy {
+			keys = append(keys, expr.String())
+		}
+		grouper = group.NewGrouper(keys)
+	}
+
 	return &Aggregator{
-		cfgs: cfgs,
-		p:    p,
+		filter:    fil,
+		grouper:   grouper,
+		submitter: submitter,
 
-		subs: [2][][]runningDest{
-			make([][]runningDest, len(cfgs)),
-			make([][]runningDest, len(cfgs)),
-		},
-
-		loaded: make(chan struct{}),
-	}
-}
-
-func (a *Aggregator) WaitForFirstLoad() <-chan struct{} { return a.loaded }
-
-func (a *Aggregator) Run(ctx context.Context) {
-	var wg sync.WaitGroup
-	for sourceIdx, cfg := range a.cfgs {
-		wg.Go(func() {
-			refreshInterval := 15 * time.Minute
-			for {
-				if err := ctx.Err(); err != nil {
-					return
-				}
-				csc, destinations, err := cfg.Load(ctx)
-				if err != nil {
-					// TODO: log this error?
-				} else {
-					refreshInterval = time.Duration(csc.RefreshInterval)
-					refreshInterval = min(refreshInterval, maxInterval)
-					refreshInterval = max(refreshInterval, minInterval)
-					a.updateDestinations(ctx, sourceIdx, destinations)
-					a.once.Do(func() { close(a.loaded) })
-				}
-				select {
-				case <-ctx.Done():
-					return
-				case <-time.After(jitter(refreshInterval)):
-				}
-			}
-		})
-	}
-	wg.Wait()
-}
-
-func (a *Aggregator) updateDestinations(ctx context.Context, sourceIdx int, destConfigs []config.Destination) {
-	// exclusively update the destinations
-	a.mu.Lock()
-	defer a.mu.Unlock()
-
-	// check if all the destinations are equal
-	token := a.swap.Acquire()
-	current := a.subs[token.Gen()%2]
-
-	differs := len(current[sourceIdx]) != len(destConfigs)
-	if !differs {
-		for i, dest := range current[sourceIdx] {
-			if !reflect.DeepEqual(dest.dest.Config, destConfigs[i]) {
-				differs = true
-				break
-			}
-		}
-	}
-	if !differs {
-		token.Release()
-		return
-	}
-
-	dests := make([]*destination.Destination, len(destConfigs))
-	for i, destConfig := range destConfigs {
-		dest, err := destination.New(destConfig, a.p, process.GetStore(ctx))
-		if err != nil {
-			token.Release()
-			return
-		}
-		dests[i] = dest
-	}
-
-	// make a copy of the current slice and release the token. after now we're
-	// done with current and update the destinations for the source index.
-	next := slices.Clone(current)
-	token.Release()
-
-	next[sourceIdx] = make([]runningDest, len(destConfigs))
-	for i, dest := range dests {
-		ctx, cancel := context.WithCancel(ctx)
-		done := make(chan struct{})
-		next[sourceIdx][i] = runningDest{
-			dest:   dest,
-			cancel: cancel,
-			done:   done,
-		}
-		go func() {
-			defer close(done)
-			next[sourceIdx][i].dest.Run(ctx)
-		}()
-	}
-
-	// set the submitters for submit to use for the next generation.
-	a.subs[(token.Gen()+1)%2] = next
-
-	// increment and wait for everyone to be finished with them.
-	gen := a.swap.Increment().Wait()
-
-	// clean up the destinations that were just swapped from.
-	for _, dest := range a.subs[gen%2][sourceIdx] {
-		dest.cancel()
-		<-dest.done
-	}
+		groups: make(map[unique.Handle[string]]*aggregate),
+		epoch:  time.Now(),
+	}, nil
 }
 
 func (a *Aggregator) Submit(ctx context.Context, ev hydrant.Event) {
-	token := a.swap.Acquire()
-	defer token.Release()
+	es := evalPool.Get().(*filter.EvalState)
+	defer evalPool.Put(es)
 
-	for _, dests := range a.subs[token.Gen()%2] {
-		for _, dest := range dests {
-			dest.dest.Submit(ctx, ev)
-		}
+	if !es.Evaluate(a.filter, ev) {
+		return
 	}
+
+	if a.grouper == nil {
+		a.submitter.Submit(ctx, ev)
+		return
+	}
+
+	// TODO: this mutex is too big. need an atomic updating aggregate
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	groupKey := a.grouper.Group(ev)
+
+	agg := a.groups[groupKey]
+	if agg == nil {
+		group := a.grouper.Annotations(ev)
+		groupSet := make(map[string]struct{}, len(group))
+		for _, ann := range group {
+			groupSet[ann.Key] = struct{}{}
+		}
+
+		agg = &aggregate{
+			event:    group,
+			groupSet: groupSet,
+			hists:    make(map[string]*flathist.Histogram),
+			excluded: make(map[string]struct{}),
+		}
+
+		a.groups[groupKey] = agg
+	}
+
+	for _, ann := range ev {
+		if _, ok := agg.groupSet[ann.Key]; ok {
+			continue
+		}
+
+		// if we got a full histogram, merge it into our existing one.
+		if h, ok := ann.Value.Histogram(); ok {
+			into, ok := agg.hists[ann.Key]
+			if !ok {
+				into = flathist.NewHistogram()
+				agg.hists[ann.Key] = into
+				agg.histOrd = append(agg.histOrd, ann.Key)
+			}
+
+			into.Merge(h)
+			continue
+		}
+
+		datum, ok := observableValue(ann.Value)
+		if !ok {
+			agg.excluded[ann.Key] = struct{}{}
+			continue
+		}
+
+		into, ok := agg.hists[ann.Key]
+		if !ok {
+			into = flathist.NewHistogram()
+			agg.hists[ann.Key] = into
+			agg.histOrd = append(agg.histOrd, ann.Key)
+		}
+
+		into.Observe(datum)
+	}
+}
+
+func observableValue(v value.Value) (float32, bool) {
+	switch v.Kind() {
+	case value.KindInt:
+		x, _ := v.Int()
+		return float32(x), true
+	case value.KindUint:
+		x, _ := v.Uint()
+		return float32(x), true
+	case value.KindDuration:
+		x, _ := v.Duration()
+		return float32(x.Seconds()), true
+	case value.KindTimestamp:
+		x, _ := v.Timestamp()
+		return float32(x.Unix()), true
+	case value.KindFloat:
+		x, _ := v.Float()
+		return float32(x), true
+	}
+	return 0, false
+}
+
+func (a *Aggregator) Flush(ctx context.Context) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	end := time.Now()
+
+	for _, agg := range a.groups {
+		agg.event = append(agg.event,
+			hydrant.Timestamp("agg:start_time", a.epoch),
+			hydrant.Timestamp("agg:end_time", end),
+			hydrant.Duration("agg:duration", end.Sub(a.epoch)),
+		)
+		if len(agg.excluded) > 0 {
+			agg.event = append(agg.event, hydrant.String("agg:excluded",
+				strings.Join(slices.Collect(maps.Keys(agg.excluded)), ",")))
+		}
+		for _, key := range agg.histOrd {
+			agg.event = append(agg.event, hydrant.Histogram(key, agg.hists[key]))
+		}
+		a.submitter.Submit(ctx, agg.event)
+	}
+
+	a.epoch = end
+	clear(a.groups)
 }

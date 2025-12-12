@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html>
+
 <head>
     <title>Hydrator Query</title>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="stylesheet" href="style.css" />
 </head>
+
 <body>
     <div class="container">
         <h1>Hydrator</h1>
@@ -13,43 +15,44 @@
         <div class="tabs">
             <button class="tab-button active" data-tab="query">Query</button>
             <button class="tab-button" data-tab="explore">Explore</button>
+            <button class="tab-button" data-tab="config">Config</button>
         </div>
 
         <div class="tab-content active" id="query-tab">
-        <form id="queryForm">
-            <div class="form-group">
-                <label for="query">Query:</label>
-                <input type="text" id="query" name="q" value="{name|}" required />
-            </div>
-
-            <div class="options-group">
-                <div class="options-label">Options</div>
-                <div class="options-controls">
-                    <label class="option-item">
-                        <input type="checkbox" id="merged" name="m" checked />
-                        <span>Merge results</span>
-                    </label>
-                    <label class="option-item">
-                        <input type="checkbox" id="linearSpacing" name="l" />
-                        <span>Linear spacing</span>
-                    </label>
-                    <label class="option-item">
-                        <span>Quantiles:</span>
-                        <input type="number" id="numQuantiles" name="n" value="20" min="1" />
-                    </label>
-                    <label class="option-item" id="expSpacingOption">
-                        <span>Exp spacing:</span>
-                        <input type="number" id="expSpacing" name="e" value="8" min="1" />
-                    </label>
+            <form id="queryForm">
+                <div class="form-group">
+                    <label for="query">Query:</label>
+                    <input type="text" id="query" name="q" value="{ duration, name | }" required />
                 </div>
-            </div>
 
-            <button type="submit">Submit Query</button>
-        </form>
+                <div class="options-group">
+                    <div class="options-label">Options</div>
+                    <div class="options-controls">
+                        <label class="option-item">
+                            <input type="checkbox" id="merged" name="m" />
+                            <span>Merge results</span>
+                        </label>
+                        <label class="option-item">
+                            <input type="checkbox" id="linearSpacing" name="l" />
+                            <span>Linear spacing</span>
+                        </label>
+                        <label class="option-item">
+                            <span>Quantiles:</span>
+                            <input type="number" id="numQuantiles" name="n" value="20" min="1" />
+                        </label>
+                        <label class="option-item" id="expSpacingOption">
+                            <span>Exp spacing:</span>
+                            <input type="number" id="expSpacing" name="e" value="8" min="1" />
+                        </label>
+                    </div>
+                </div>
 
-        <div id="error" class="error" style="display: none;"></div>
-        <div id="loading" class="loading" style="display: none;">Loading...</div>
-        <div id="results" class="results"></div>
+                <button type="submit">Submit Query</button>
+            </form>
+
+            <div id="error" class="error" style="display: none;"></div>
+            <div id="loading" class="loading" style="display: none;">Loading...</div>
+            <div id="results" class="results"></div>
         </div>
 
         <div class="tab-content" id="explore-tab">
@@ -60,8 +63,20 @@
             <div id="exploreError" class="error" style="display: none;"></div>
             <div id="exploreKeys" class="explore-keys"></div>
         </div>
+
+        <div class="tab-content" id="config-tab">
+            <div class="config-header">
+                <button id="refreshConfig" class="refresh-button">Refresh</button>
+                <button id="saveConfig" class="save-button">Save</button>
+            </div>
+            <div id="configLoading" class="loading" style="display: none;">Loading config...</div>
+            <div id="configError" class="error" style="display: none;"></div>
+            <div id="configSuccess" class="success" style="display: none;">Configuration saved successfully!</div>
+            <textarea id="configEditor" class="config-editor" spellcheck="false"></textarea>
+        </div>
     </div>
 
     <script src="app.js"></script>
 </body>
+
 </html>

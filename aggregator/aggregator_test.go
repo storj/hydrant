@@ -41,7 +41,7 @@ func TestWireEverythingUp(t *testing.T) {
 	p := new(filter.Parser)
 	filter.SetBuiltins(p)
 
-	a := NewAggregator([]*config.Source{config.NewSource(srv.URL)}, p)
+	a := NewAggregator([]Source{config.NewSource(srv.URL)}, p)
 	go a.Run(t.Context())
 
 	<-a.WaitForFirstLoad()

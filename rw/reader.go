@@ -73,16 +73,6 @@ func (r *Reader) ReadBytes(n uint64) (x []byte) {
 	return x
 }
 
-func (r *Reader) ReadString(n uint64) (x string) {
-	if uint64(len(r.buf)) >= n {
-		x = string(r.buf[:n])
-		r.buf = r.buf[n:]
-	} else {
-		r.Invalid(errs.Errorf("short buffer"))
-	}
-	return x
-}
-
 func (r *Reader) Done() ([]byte, error) {
 	buf := r.buf
 	r.buf = nil

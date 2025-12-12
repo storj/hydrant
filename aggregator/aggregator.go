@@ -21,12 +21,18 @@ const (
 	minInterval = time.Minute
 )
 
+type Source interface {
+	Load(context.Context) (cfg config.SourceConfig, dsts []config.Destination, err error)
+}
+
 type Aggregator struct {
-	cfgs   []*config.Source
-	p      *filter.Parser
-	mu     sync.Mutex
-	subs   [2][][]runningDest
-	swap   swaparoo.Tracker
+	cfgs []Source
+	p    *filter.Parser
+
+	mu   sync.Mutex
+	swap swaparoo.Tracker
+	subs [2][][]runningDest
+
 	once   sync.Once
 	loaded chan struct{}
 }
@@ -39,14 +45,16 @@ type runningDest struct {
 
 var _ hydrant.Submitter = (*Aggregator)(nil)
 
-func NewAggregator(cfgs []*config.Source, p *filter.Parser) *Aggregator {
+func NewAggregator(cfgs []Source, p *filter.Parser) *Aggregator {
 	return &Aggregator{
 		cfgs: cfgs,
 		p:    p,
+
 		subs: [2][][]runningDest{
 			make([][]runningDest, len(cfgs)),
 			make([][]runningDest, len(cfgs)),
 		},
+
 		loaded: make(chan struct{}),
 	}
 }

@@ -53,7 +53,7 @@ func (a Annotation) AppendTo(buf []byte) []byte {
 
 func (a *Annotation) ReadFrom(buf []byte) ([]byte, error) {
 	r := rw.NewReader(buf)
-	a.Key = r.ReadString(r.ReadVarint())
+	a.Key = string(r.ReadBytes(r.ReadVarint()))
 	rem, err := r.Done()
 	if err != nil {
 		return nil, err

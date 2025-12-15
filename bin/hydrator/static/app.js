@@ -1,3 +1,6 @@
+var metricExpandedState = {};
+var exploreKeysExpandedState = {};
+
 function updateExpSpacingVisibility() {
     var linearSpacing = document.getElementById('linearSpacing').checked;
     var expSpacingOption = document.getElementById('expSpacingOption');
@@ -82,12 +85,28 @@ function displayResults(data, mergedRequested) {
         var resultItem = document.createElement('div');
         resultItem.className = 'result-item merged-result';
 
+        var mergedDetails = document.createElement('details');
+        var isExpanded = metricExpandedState['__merged__'];
+        if (isExpanded !== undefined) {
+            mergedDetails.open = isExpanded;
+        } else {
+            mergedDetails.open = true;
+        }
+
+        mergedDetails.addEventListener('toggle', function() {
+            metricExpandedState['__merged__'] = mergedDetails.open;
+        });
+
+        var mergedSummary = document.createElement('summary');
+        mergedSummary.className = 'result-summary';
+        mergedSummary.textContent = 'Merged Result';
+        mergedDetails.appendChild(mergedSummary);
+
+        var mergedContent = document.createElement('div');
+        mergedContent.className = 'result-content';
+
         var header = document.createElement('div');
         header.className = 'result-header';
-
-        var title = document.createElement('h2');
-        title.textContent = 'Merged Result';
-        header.appendChild(title);
 
         if (data.Names.length > 0) {
             var namesDropdown = document.createElement('details');
@@ -108,8 +127,10 @@ function displayResults(data, mergedRequested) {
             header.appendChild(namesDropdown);
         }
 
-        resultItem.appendChild(header);
-        renderHistogram(resultItem, data.Data[0]);
+        mergedContent.appendChild(header);
+        renderHistogram(mergedContent, data.Data[0]);
+        mergedDetails.appendChild(mergedContent);
+        resultItem.appendChild(mergedDetails);
         resultsDiv.appendChild(resultItem);
     } else {
         data.Names.forEach(function(name, index) {
@@ -117,6 +138,16 @@ function displayResults(data, mergedRequested) {
             resultItem.className = 'result-item';
 
             var details = document.createElement('details');
+            var isExpanded = metricExpandedState[name];
+            if (isExpanded !== undefined) {
+                details.open = isExpanded;
+            } else {
+                details.open = false;
+            }
+
+            details.addEventListener('toggle', function() {
+                metricExpandedState[name] = details.open;
+            });
 
             var summary = document.createElement('summary');
             summary.className = 'result-summary';
@@ -267,32 +298,59 @@ function addStat(container, label, value) {
 var tabButtons = document.querySelectorAll('.tab-button');
 var tabContents = document.querySelectorAll('.tab-content');
 
+function switchToTab(targetTab) {
+    tabButtons.forEach(function(btn) {
+        btn.classList.remove('active');
+    });
+    tabContents.forEach(function(content) {
+        content.classList.remove('active');
+    });
+
+    var targetButton = document.querySelector('.tab-button[data-tab="' + targetTab + '"]');
+    if (targetButton) {
+        targetButton.classList.add('active');
+    }
+
+    var targetContent = document.getElementById(targetTab + '-tab');
+    if (targetContent) {
+        targetContent.classList.add('active');
+    }
+
+    if (targetTab === 'explore') {
+        loadExploreKeys();
+    }
+
+    if (targetTab === 'serverconfig' && !window.serverConfigLoaded) {
+        loadServerConfig();
+    }
+
+    if (targetTab === 'config' && !window.configLoaded) {
+        loadConfig();
+    }
+}
+
 tabButtons.forEach(function(button) {
     button.addEventListener('click', function() {
         var targetTab = button.getAttribute('data-tab');
-
-        tabButtons.forEach(function(btn) {
-            btn.classList.remove('active');
-        });
-        tabContents.forEach(function(content) {
-            content.classList.remove('active');
-        });
-
-        button.classList.add('active');
-        document.getElementById(targetTab + '-tab').classList.add('active');
-
-        if (targetTab === 'explore' && !window.exploreLoaded) {
-            loadExploreKeys();
-        }
-
-        if (targetTab === 'config' && !window.configLoaded) {
-            loadConfig();
-        }
+        window.location.hash = targetTab;
+        switchToTab(targetTab);
     });
 });
 
+function handleHashChange() {
+    var hash = window.location.hash.substring(1);
+    if (hash) {
+        switchToTab(hash);
+    }
+}
+
+window.addEventListener('hashchange', handleHashChange);
+
+if (window.location.hash) {
+    handleHashChange();
+}
+
 document.getElementById('refreshExplore').addEventListener('click', function() {
-    window.exploreLoaded = false;
     loadExploreKeys();
 });
 
@@ -319,7 +377,6 @@ function loadExploreKeys() {
     .then(function(keys) {
         loadingDiv.style.display = 'none';
         refreshButton.disabled = false;
-        window.exploreLoaded = true;
         displayKeys(keys);
     })
     .catch(function(error) {
@@ -343,6 +400,11 @@ function displayKeys(keys) {
         keyItem.className = 'key-item';
 
         var details = document.createElement('details');
+        var wasExpanded = exploreKeysExpandedState[key];
+        if (wasExpanded) {
+            details.open = true;
+        }
+
         var summary = document.createElement('summary');
         summary.textContent = key;
         details.appendChild(summary);
@@ -352,10 +414,15 @@ function displayKeys(keys) {
         details.appendChild(valuesContainer);
 
         details.addEventListener('toggle', function() {
+            exploreKeysExpandedState[key] = details.open;
             if (details.open) {
                 loadKeyValues(key, valuesContainer);
             }
         });
+
+        if (wasExpanded) {
+            loadKeyValues(key, valuesContainer);
+        }
 
         keyItem.appendChild(details);
         keysDiv.appendChild(keyItem);
@@ -605,6 +672,22 @@ function createQuantilesSVG(quantiles) {
     return svg;
 }
 
+document.getElementById('refreshServerConfig').addEventListener('click', function() {
+    window.serverConfigLoaded = false;
+    loadServerConfig();
+});
+
+document.getElementById('saveServerConfig').addEventListener('click', function() {
+    saveServerConfig();
+});
+
+document.getElementById('serverConfigEditor').addEventListener('keydown', function(e) {
+    if (e.shiftKey && e.key === 'Enter') {
+        e.preventDefault();
+        saveServerConfig();
+    }
+});
+
 document.getElementById('refreshConfig').addEventListener('click', function() {
     window.configLoaded = false;
     loadConfig();
@@ -613,6 +696,107 @@ document.getElementById('refreshConfig').addEventListener('click', function() {
 document.getElementById('saveConfig').addEventListener('click', function() {
     saveConfig();
 });
+
+document.getElementById('configEditor').addEventListener('keydown', function(e) {
+    if (e.shiftKey && e.key === 'Enter') {
+        e.preventDefault();
+        saveConfig();
+    }
+});
+
+function loadServerConfig() {
+    var loadingDiv = document.getElementById('serverConfigLoading');
+    var errorDiv = document.getElementById('serverConfigError');
+    var successDiv = document.getElementById('serverConfigSuccess');
+    var editor = document.getElementById('serverConfigEditor');
+    var refreshButton = document.getElementById('refreshServerConfig');
+    var saveButton = document.getElementById('saveServerConfig');
+
+    loadingDiv.style.display = 'block';
+    errorDiv.style.display = 'none';
+    successDiv.style.display = 'none';
+    editor.value = '';
+    refreshButton.disabled = true;
+    saveButton.disabled = true;
+
+    fetch('/api/server-config', {
+        method: 'GET'
+    })
+    .then(function(response) {
+        if (!response.ok) {
+            throw new Error('Failed to load config');
+        }
+        return response.json();
+    })
+    .then(function(config) {
+        loadingDiv.style.display = 'none';
+        refreshButton.disabled = false;
+        saveButton.disabled = false;
+        window.serverConfigLoaded = true;
+        editor.value = JSON.stringify(config, null, 4);
+    })
+    .catch(function(error) {
+        loadingDiv.style.display = 'none';
+        refreshButton.disabled = false;
+        saveButton.disabled = false;
+        errorDiv.textContent = 'Error: ' + error.message;
+        errorDiv.style.display = 'block';
+    });
+}
+
+function saveServerConfig() {
+    var loadingDiv = document.getElementById('serverConfigLoading');
+    var errorDiv = document.getElementById('serverConfigError');
+    var successDiv = document.getElementById('serverConfigSuccess');
+    var editor = document.getElementById('serverConfigEditor');
+    var refreshButton = document.getElementById('refreshServerConfig');
+    var saveButton = document.getElementById('saveServerConfig');
+
+    errorDiv.style.display = 'none';
+    successDiv.style.display = 'none';
+
+    var config;
+    try {
+        config = JSON.parse(editor.value);
+    } catch (e) {
+        errorDiv.textContent = 'Error: Invalid JSON - ' + e.message;
+        errorDiv.style.display = 'block';
+        return;
+    }
+
+    loadingDiv.style.display = 'block';
+    refreshButton.disabled = true;
+    saveButton.disabled = true;
+
+    fetch('/api/server-config', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(config)
+    })
+    .then(function(response) {
+        if (!response.ok) {
+            return response.text().then(function(text) {
+                throw new Error(text || 'Failed to save config');
+            });
+        }
+        loadingDiv.style.display = 'none';
+        refreshButton.disabled = false;
+        saveButton.disabled = false;
+        successDiv.style.display = 'block';
+        setTimeout(function() {
+            successDiv.style.display = 'none';
+        }, 3000);
+    })
+    .catch(function(error) {
+        loadingDiv.style.display = 'none';
+        refreshButton.disabled = false;
+        saveButton.disabled = false;
+        errorDiv.textContent = 'Error: ' + error.message;
+        errorDiv.style.display = 'block';
+    });
+}
 
 function loadConfig() {
     var loadingDiv = document.getElementById('configLoading');

@@ -8,6 +8,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"sync"
 
 	"github.com/zeebo/hmux"
 
@@ -26,13 +27,18 @@ type handler struct {
 	b      *backend.Backend
 	mem    *MemStore
 	source *FixedSource
+
+	mu  sync.Mutex
+	cfg *config.Config
 }
 
-func NewHandler(b *backend.Backend, mem *MemStore, source *FixedSource) http.Handler {
+func NewHandler(b *backend.Backend, mem *MemStore, source *FixedSource, cfg *config.Config) http.Handler {
 	h := handler{
 		b:      b,
 		mem:    mem,
 		source: source,
+
+		cfg: cfg,
 	}
 
 	return hmux.Dir{
@@ -53,6 +59,10 @@ func NewHandler(b *backend.Backend, mem *MemStore, source *FixedSource) http.Han
 			},
 			"/annotations": hmux.Method{
 				"GET": http.HandlerFunc(h.annotationsHandler),
+			},
+			"/server-config": hmux.Method{
+				"GET":  http.HandlerFunc(h.serverConfigHandlerGET),
+				"POST": http.HandlerFunc(h.serverConfigHandlerPOST),
 			},
 			"/config": hmux.Method{
 				"GET":  http.HandlerFunc(h.configHandlerGET),
@@ -256,10 +266,10 @@ func (h *handler) annotationsHandler(w http.ResponseWriter, r *http.Request) {
 	enc.Encode(annotations)
 }
 
-func (h *handler) configHandlerGET(w http.ResponseWriter, r *http.Request) {
+func (h *handler) serverConfigHandlerGET(w http.ResponseWriter, r *http.Request) {
 	ctx := hydrant.WithSubmitter(r.Context(), h.b)
 
-	ctx, span := hydrant.StartSpanNamed(ctx, "config_get_handler")
+	ctx, span := hydrant.StartSpanNamed(ctx, "server_config_get_handler")
 	defer span.Done(nil)
 
 	_, dests, _ := h.source.Load(ctx)
@@ -269,10 +279,10 @@ func (h *handler) configHandlerGET(w http.ResponseWriter, r *http.Request) {
 	enc.Encode(dests)
 }
 
-func (h *handler) configHandlerPOST(w http.ResponseWriter, r *http.Request) {
+func (h *handler) serverConfigHandlerPOST(w http.ResponseWriter, r *http.Request) {
 	ctx := hydrant.WithSubmitter(r.Context(), h.b)
 
-	ctx, span := hydrant.StartSpanNamed(ctx, "config_post_handler")
+	ctx, span := hydrant.StartSpanNamed(ctx, "server_config_post_handler")
 	defer span.Done(nil)
 
 	var dests []config.Destination
@@ -284,4 +294,37 @@ func (h *handler) configHandlerPOST(w http.ResponseWriter, r *http.Request) {
 
 	h.source.SetDestinations(dests)
 	h.b.Trigger()
+}
+
+func (h *handler) configHandlerGET(w http.ResponseWriter, r *http.Request) {
+	ctx := hydrant.WithSubmitter(r.Context(), h.b)
+
+	ctx, span := hydrant.StartSpanNamed(ctx, "config_get_handler")
+	defer span.Done(nil)
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "    ")
+	enc.Encode(h.cfg)
+}
+
+func (h *handler) configHandlerPOST(w http.ResponseWriter, r *http.Request) {
+	ctx := hydrant.WithSubmitter(r.Context(), h.b)
+
+	ctx, span := hydrant.StartSpanNamed(ctx, "config_post_handler")
+	defer span.Done(nil)
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	var next config.Config
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(&next); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	*h.cfg = next
 }

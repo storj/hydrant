@@ -15,6 +15,7 @@
         <div class="tabs">
             <button class="tab-button active" data-tab="query">Query</button>
             <button class="tab-button" data-tab="explore">Explore</button>
+            <button class="tab-button" data-tab="serverconfig">Server Config</button>
             <button class="tab-button" data-tab="config">Config</button>
         </div>
 
@@ -62,6 +63,17 @@
             <div id="exploreLoading" class="loading" style="display: none;">Loading keys...</div>
             <div id="exploreError" class="error" style="display: none;"></div>
             <div id="exploreKeys" class="explore-keys"></div>
+        </div>
+
+        <div class="tab-content" id="serverconfig-tab">
+            <div class="config-header">
+                <button id="refreshServerConfig" class="refresh-button">Refresh</button>
+                <button id="saveServerConfig" class="save-button">Save</button>
+            </div>
+            <div id="serverConfigLoading" class="loading" style="display: none;">Loading config...</div>
+            <div id="serverConfigError" class="error" style="display: none;"></div>
+            <div id="serverConfigSuccess" class="success" style="display: none;">Configuration saved successfully!</div>
+            <textarea id="serverConfigEditor" class="config-editor" spellcheck="false"></textarea>
         </div>
 
         <div class="tab-content" id="config-tab">

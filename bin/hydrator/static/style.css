@@ -226,7 +226,19 @@ button:disabled {
 }
 
 .result-item.merged-result {
+    padding: 0;
+}
+
+.result-item.merged-result details {
+    padding: 0;
+}
+
+.result-item.merged-result summary {
     padding: 15px;
+}
+
+.result-item.merged-result .result-content {
+    padding: 0 15px 15px 15px;
 }
 
 .result-header {

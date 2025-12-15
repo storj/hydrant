@@ -35,6 +35,7 @@ func main() {
 type root struct {
 	config string
 	addr   string
+	url    string
 }
 
 func (r *root) Setup(params clingy.Parameters) {
@@ -43,6 +44,9 @@ func (r *root) Setup(params clingy.Parameters) {
 	).(string)
 	r.addr = params.Flag("addr", "Address to bind HTTP server to", ":0",
 		clingy.Short('a'),
+	).(string)
+	r.url = params.Flag("url", "URL of this hydrator instance", "self",
+		clingy.Short('u'),
 	).(string)
 }
 
@@ -65,6 +69,39 @@ func (r *root) Execute(ctx context.Context) (err error) {
 			},
 		},
 	}}
+
+	cfg := &config.Config{
+		SourceConfig: config.SourceConfig{
+			RefreshInterval: config.Duration(30 * time.Second),
+		},
+		GlobalFields: []config.Expression{
+			"go.os",
+			"go.arch",
+			"go.version",
+			"go.main.path",
+			"go.main.version",
+			"go.main.sum",
+			"vcs.time",
+			"vcs.revision",
+			"vcs.modified",
+			"proc.starttime",
+			"os.hostname",
+			"os.ip",
+			"instance",
+		},
+		Destinations: []config.Destination{
+			{
+				URL:                 r.url,
+				AggregationInterval: config.Duration(10 * time.Second),
+				Queries: []config.Query{
+					{
+						Filter:  "has(span_id)",
+						GroupBy: []config.Expression{"name", "success", "instance"},
+					},
+				},
+			},
+		},
+	}
 
 	b := backend.New([]backend.Source{source}, mem, env)
 
@@ -91,7 +128,7 @@ func (r *root) Execute(ctx context.Context) (err error) {
 			lis,
 			handlers.LoggingHandler(
 				clingy.Stdout(ctx),
-				NewHandler(b, mem, source),
+				NewHandler(b, mem, source, cfg),
 			),
 		),
 	)

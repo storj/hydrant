@@ -12,6 +12,7 @@ import (
 	"storj.io/hydrant"
 	"storj.io/hydrant/process"
 	"storj.io/hydrant/rw"
+	"storj.io/hydrant/utils"
 )
 
 var (
@@ -48,7 +49,7 @@ func NewHTTPSubmitter(url string, processAnnotations *process.Selected) *HTTPSub
 }
 
 func (s *HTTPSubmitter) Run(ctx context.Context) {
-	nextTick := time.After(jitter(httpBatchInterval))
+	nextTick := time.After(utils.Jitter(httpBatchInterval))
 	for {
 		select {
 		case <-ctx.Done():
@@ -56,7 +57,7 @@ func (s *HTTPSubmitter) Run(ctx context.Context) {
 		case <-s.trigger:
 		case <-nextTick:
 		}
-		nextTick = time.After(jitter(httpBatchInterval))
+		nextTick = time.After(utils.Jitter(httpBatchInterval))
 		s.submitBatch(ctx)
 	}
 }

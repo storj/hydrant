@@ -87,7 +87,6 @@ func (r *root) Execute(ctx context.Context) (err error) {
 			"proc.starttime",
 			"os.hostname",
 			"os.ip",
-			"instance",
 		},
 		Destinations: []config.Destination{
 			{
@@ -96,7 +95,7 @@ func (r *root) Execute(ctx context.Context) (err error) {
 				Queries: []config.Query{
 					{
 						Filter:  "has(span_id)",
-						GroupBy: []config.Expression{"name", "success", "instance"},
+						GroupBy: []config.Expression{"name", "success"},
 					},
 				},
 			},

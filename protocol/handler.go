@@ -52,8 +52,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 		if err != nil {
 			return err
 		}
-
-		h.sub.Submit(req.Context(), process)
+		process = process[:len(process):len(process)] // force no sharing
 
 		r := rw.NewReader(buf)
 		count := r.ReadVarint()
@@ -69,7 +68,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 				return err
 			}
 
-			h.sub.Submit(req.Context(), ev)
+			h.sub.Submit(req.Context(), append(process, ev...))
 		}
 
 		return nil

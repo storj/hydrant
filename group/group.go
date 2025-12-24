@@ -2,13 +2,12 @@ package group
 
 import (
 	"encoding/binary"
-	"iter"
-	"maps"
 	"slices"
 	"sync/atomic"
 	"unique"
 
 	"storj.io/hydrant"
+	"storj.io/hydrant/utils"
 )
 
 type Grouper struct {
@@ -21,7 +20,7 @@ func NewGrouper(keys []string) *Grouper {
 	g := &Grouper{
 		keys:  slices.Sorted(slices.Values(keys)),
 		hints: make([]atomic.Uint32, len(keys)),
-		set:   maps.Collect(seq2seq2(slices.Values(keys), struct{}{})),
+		set:   utils.Set(slices.Values(keys)),
 	}
 	return g
 }
@@ -82,14 +81,4 @@ func appendString(buf []byte, s string) []byte {
 	buf = append(buf, tmp[:]...)
 	buf = append(buf, s...)
 	return buf
-}
-
-func seq2seq2[S, T any](s iter.Seq[S], v T) iter.Seq2[S, T] {
-	return func(yield func(S, T) bool) {
-		for x := range s {
-			if !yield(x, v) {
-				return
-			}
-		}
-	}
 }

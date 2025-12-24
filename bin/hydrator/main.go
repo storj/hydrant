@@ -63,7 +63,7 @@ func (r *root) Execute(ctx context.Context) (err error) {
 			AggregationInterval: config.Duration(10 * time.Second),
 			Queries: []config.Query{
 				{
-					Filter:  "has(span_id)",
+					Filter:  "has(name) & has(success) & has(duration)",
 					GroupBy: []config.Expression{"name", "success"},
 				},
 			},

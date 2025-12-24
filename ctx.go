@@ -2,10 +2,31 @@ package hydrant
 
 import (
 	"context"
+	"sync/atomic"
 	"time"
 )
 
-var DefaultSubmitter Submitter
+type noopSubmitter struct{}
+
+func (n noopSubmitter) Submit(ctx context.Context, ev Event) {}
+
+var defaultSubmitter = func() *atomic.Value {
+	v := new(atomic.Value)
+	v.Store(new(noopSubmitter))
+	return v
+}()
+
+func SetDefaultSubmitter(s Submitter) {
+	if s == nil {
+		s = noopSubmitter{}
+	}
+	defaultSubmitter.Store(s)
+}
+
+func GetDefaultSubmitter() Submitter {
+	s, _ := defaultSubmitter.Load().(Submitter)
+	return s
+}
 
 type submitterKeyType struct{}
 
@@ -15,12 +36,14 @@ type Submitter interface {
 
 func GetSubmitter(ctx context.Context) (s Submitter) {
 	if cs, ok := ctx.(*contextSpan); ok {
-		return cs.sub
+		s = cs.sub
+	} else if ctx != nil {
+		s, _ = ctx.Value(submitterKeyType{}).(Submitter)
 	}
-	if s, ok := ctx.Value(submitterKeyType{}).(Submitter); ok {
-		return s
+	if s == nil {
+		s = GetDefaultSubmitter()
 	}
-	return DefaultSubmitter
+	return s
 }
 
 func WithSubmitter(ctx context.Context, s Submitter) context.Context {

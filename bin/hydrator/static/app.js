@@ -1,5 +1,6 @@
 var metricExpandedState = {};
 var exploreKeysExpandedState = {};
+var metricLogModeState = {};
 
 function updateExpSpacingVisibility() {
     var linearSpacing = document.getElementById('linearSpacing').checked;
@@ -128,7 +129,7 @@ function displayResults(data, mergedRequested) {
         }
 
         mergedContent.appendChild(header);
-        renderHistogram(mergedContent, data.Data[0]);
+        renderHistogram(mergedContent, data.Data[0], '__merged__');
         mergedDetails.appendChild(mergedContent);
         resultItem.appendChild(mergedDetails);
         resultsDiv.appendChild(resultItem);
@@ -156,7 +157,7 @@ function displayResults(data, mergedRequested) {
 
             var content = document.createElement('div');
             content.className = 'result-content';
-            renderHistogram(content, data.Data[index]);
+            renderHistogram(content, data.Data[index], name);
             details.appendChild(content);
 
             resultItem.appendChild(details);
@@ -165,7 +166,7 @@ function displayResults(data, mergedRequested) {
     }
 }
 
-function renderHistogram(container, histData) {
+function renderHistogram(container, histData, metricKey) {
     var stats = document.createElement('div');
     stats.className = 'stats';
 
@@ -194,12 +195,47 @@ function renderHistogram(container, histData) {
         var quantilesDiv = document.createElement('div');
         quantilesDiv.className = 'quantiles';
 
+        var quantilesHeader = document.createElement('div');
+        quantilesHeader.style.display = 'flex';
+        quantilesHeader.style.justifyContent = 'space-between';
+        quantilesHeader.style.alignItems = 'center';
+        quantilesHeader.style.marginBottom = '10px';
+
         var quantilesTitle = document.createElement('h3');
         quantilesTitle.textContent = 'Quantiles';
-        quantilesDiv.appendChild(quantilesTitle);
+        quantilesTitle.style.margin = '0';
+        quantilesHeader.appendChild(quantilesTitle);
 
-        var svg = createQuantilesSVG(histData.Quantiles);
-        quantilesDiv.appendChild(svg);
+        var logModeLabel = document.createElement('label');
+        logModeLabel.className = 'option-item';
+        logModeLabel.style.fontSize = '13px';
+        logModeLabel.style.margin = '0';
+
+        var logModeCheckbox = document.createElement('input');
+        logModeCheckbox.type = 'checkbox';
+        logModeCheckbox.checked = metricLogModeState[metricKey] || false;
+
+        var logModeSpan = document.createElement('span');
+        logModeSpan.textContent = 'Logarithmic';
+
+        logModeLabel.appendChild(logModeCheckbox);
+        logModeLabel.appendChild(logModeSpan);
+        quantilesHeader.appendChild(logModeLabel);
+
+        quantilesDiv.appendChild(quantilesHeader);
+
+        var svgContainer = document.createElement('div');
+        var useLogScale = logModeCheckbox.checked;
+        var svg = createQuantilesSVG(histData.Quantiles, useLogScale);
+        svgContainer.appendChild(svg);
+        quantilesDiv.appendChild(svgContainer);
+
+        logModeCheckbox.addEventListener('change', function() {
+            metricLogModeState[metricKey] = logModeCheckbox.checked;
+            svgContainer.innerHTML = '';
+            var newSvg = createQuantilesSVG(histData.Quantiles, logModeCheckbox.checked);
+            svgContainer.appendChild(newSvg);
+        });
 
         var rawDataDetails = document.createElement('details');
         rawDataDetails.className = 'raw-data-details';
@@ -333,7 +369,6 @@ tabButtons.forEach(function(button) {
     button.addEventListener('click', function() {
         var targetTab = button.getAttribute('data-tab');
         window.location.hash = targetTab;
-        switchToTab(targetTab);
     });
 });
 
@@ -494,17 +529,56 @@ function findMinPrecision(quantiles) {
     return 16;
 }
 
-function createQuantilesSVG(quantiles) {
+function createQuantilesSVG(quantiles, useLogScale) {
     var width = 800;
     var height = 400;
     var padding = { top: 20, right: 20, bottom: 50, left: 100 };
     var graphWidth = width - padding.left - padding.right;
     var graphHeight = height - padding.top - padding.bottom;
 
-    var minV = Math.min.apply(null, quantiles.map(function(q) { return q.V; }));
-    var maxV = Math.max.apply(null, quantiles.map(function(q) { return q.V; }));
-    var rangeV = maxV - minV;
-    if (rangeV === 0) rangeV = 1;
+    var values = quantiles.map(function(q) { return q.V; });
+
+    var allPositive = values.every(function(v) { return v > 1e-100; });
+    var useRegularLog = useLogScale && allPositive;
+    var useSymlog = useLogScale && !allPositive;
+
+    function symlog(x) {
+        if (x === 0) return 0;
+        return (x > 0 ? 1 : -1) * Math.log10(1 + Math.abs(x));
+    }
+
+    function symlogInverse(y) {
+        if (y === 0) return 0;
+        return (y > 0 ? 1 : -1) * (Math.pow(10, Math.abs(y)) - 1);
+    }
+
+    var minV, maxV, rangeV;
+    var transformFunc, inverseFunc;
+
+    if (useRegularLog) {
+        transformFunc = function(x) { return Math.log10(x); };
+        inverseFunc = function(y) { return Math.pow(10, y); };
+        var transformedValues = values.map(transformFunc);
+        minV = Math.min.apply(null, transformedValues);
+        maxV = Math.max.apply(null, transformedValues);
+        rangeV = maxV - minV;
+        if (rangeV === 0) rangeV = 1;
+    } else if (useSymlog) {
+        transformFunc = symlog;
+        inverseFunc = symlogInverse;
+        var transformedValues = values.map(symlog);
+        minV = Math.min.apply(null, transformedValues);
+        maxV = Math.max.apply(null, transformedValues);
+        rangeV = maxV - minV;
+        if (rangeV === 0) rangeV = 1;
+    } else {
+        transformFunc = function(x) { return x; };
+        inverseFunc = function(y) { return y; };
+        minV = Math.min.apply(null, values);
+        maxV = Math.max.apply(null, values);
+        rangeV = maxV - minV;
+        if (rangeV === 0) rangeV = 1;
+    }
 
     function formatValue(value) {
         if (Math.abs(value) < 0.001 && value !== 0) {
@@ -585,20 +659,22 @@ function createQuantilesSVG(quantiles) {
         gridLine.setAttribute('stroke-width', '1');
         g.appendChild(gridLine);
 
-        var value = minV + (i / yTicks) * rangeV;
+        var transformedValue = minV + (i / yTicks) * rangeV;
+        var actualValue = inverseFunc(transformedValue);
         var label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
         label.setAttribute('x', -10);
         label.setAttribute('y', y + 4);
         label.setAttribute('text-anchor', 'end');
         label.setAttribute('class', 'axis-label');
-        label.textContent = formatValue(value);
+        label.textContent = formatValue(actualValue);
         g.appendChild(label);
     }
 
     var pathData = '';
     quantiles.forEach(function(quantile, index) {
         var x = quantile.Q * graphWidth;
-        var y = graphHeight - ((quantile.V - minV) / rangeV) * graphHeight;
+        var valueForPlotting = transformFunc(quantile.V);
+        var y = graphHeight - ((valueForPlotting - minV) / rangeV) * graphHeight;
 
         if (index === 0) {
             pathData += 'M ' + x + ' ' + y;
@@ -621,7 +697,8 @@ function createQuantilesSVG(quantiles) {
 
     quantiles.forEach(function(quantile) {
         var x = quantile.Q * graphWidth;
-        var y = graphHeight - ((quantile.V - minV) / rangeV) * graphHeight;
+        var valueForPlotting = transformFunc(quantile.V);
+        var y = graphHeight - ((valueForPlotting - minV) / rangeV) * graphHeight;
 
         var circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
         circle.setAttribute('cx', x);

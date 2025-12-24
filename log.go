@@ -7,11 +7,6 @@ import (
 )
 
 func Log(ctx context.Context, message string, annotations ...Annotation) {
-	submitter := GetSubmitter(ctx)
-	if submitter == nil {
-		return
-	}
-
 	// TODO: this escapes pcs and CallersFrames allocates but every other option either depends on
 	// internals or is broken :(
 	var pcs [1]uintptr
@@ -35,5 +30,5 @@ func Log(ctx context.Context, message string, annotations ...Annotation) {
 	ev = append(ev, Timestamp("timestamp", time.Now()))
 	ev = append(ev, annotations...)
 
-	submitter.Submit(ctx, ev)
+	GetSubmitter(ctx).Submit(ctx, ev)
 }

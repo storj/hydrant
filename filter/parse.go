@@ -1,6 +1,7 @@
 package filter
 
 import (
+	"fmt"
 	"strconv"
 	"time"
 
@@ -14,6 +15,10 @@ type Filter struct {
 	filter string
 	prog   []inst
 	vals   []value.Value
+}
+
+func (f *Filter) String() string {
+	return fmt.Sprintf("(filter %q %v %v)", f.filter, f.prog, anyfy(f.vals))
 }
 
 // TODO: rename to environment or something

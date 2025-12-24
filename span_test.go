@@ -6,16 +6,19 @@ import (
 	"testing"
 
 	"github.com/zeebo/assert"
+	"github.com/zeebo/mwc"
+
+	"storj.io/hydrant/utils"
 )
 
 func TestSpan(t *testing.T) {
 	var bs bufferSubmitter
-	ctx := WithSubmitter(context.Background(), &bs)
+	ctx := WithSubmitter(t.Context(), &bs)
 
 	func() {
 		assert.Nil(t, GetSpan(ctx))
 
-		ctx, span1 := StartSpan(ctx,
+		ctx, span1 := StartSpanNamed(ctx, "span1",
 			String("user_key", "user_value"),
 			Int("user_int", 42),
 		)
@@ -24,18 +27,65 @@ func TestSpan(t *testing.T) {
 		assert.Equal(t, GetSpan(ctx), span1)
 		assert.Equal(t, span1.Task(), span1.Parent())
 
-		ctx, span2 := StartSpan(ctx,
+		ctx, span2 := StartSpanNamed(ctx, "span2",
 			String("child_key", "child_value"),
 		)
 		defer span2.Done(nil)
 
+		for s := range IterateSpans {
+			t.Logf("span: %p %v", s, s.Name())
+		}
+
 		assert.Equal(t, GetSpan(ctx), span2)
 		assert.Equal(t, span2.Parent(), span1.Id())
 		assert.Equal(t, span1.Task(), span2.Task())
+
+		span2.Done(nil)
+
+		t.Log("after done")
+		for s := range IterateSpans {
+			t.Logf("span: %p %v", s, s.Name())
+		}
 	}()
 
 	for _, ev := range bs {
 		t.Logf("%+v", ev)
+	}
+}
+
+func TestIterateSpans(t *testing.T) {
+	running := make(map[*Span]struct{})
+	defer func() {
+		for span := range running {
+			span.Done(nil)
+		}
+		if !t.Failed() {
+			assert.Equal(t, len(utils.Set(IterateSpans)), 0)
+		}
+	}()
+
+	for range 1000 {
+		switch mwc.Intn(10) {
+		case 0, 1, 2:
+			_, span := StartSpan(t.Context())
+			running[span] = struct{}{}
+
+		case 3, 4:
+			for span := range running {
+				span.Done(nil)
+				delete(running, span)
+				break
+			}
+
+		default:
+			for span := range running {
+				_, span := StartSpan(span.Context())
+				running[span] = struct{}{}
+				break
+			}
+		}
+
+		assert.Equal(t, running, utils.Set(IterateSpans))
 	}
 }
 
@@ -44,7 +94,7 @@ func TestSpan(t *testing.T) {
 //
 
 func BenchmarkStartSpan(b *testing.B) {
-	ctx := WithSubmitter(context.Background(), nullSubmitter{})
+	ctx := WithSubmitter(b.Context(), nullSubmitter{})
 
 	for depth := range 5 {
 		b.Run(fmt.Sprintf("depth=%d", depth), func(b *testing.B) {
@@ -67,7 +117,7 @@ func recursiveSpan(ctx context.Context, depth int) (err error) {
 }
 
 func BenchmarkStartSpanNamed(b *testing.B) {
-	ctx := WithSubmitter(context.Background(), nullSubmitter{})
+	ctx := WithSubmitter(b.Context(), nullSubmitter{})
 
 	for depth := range 5 {
 		b.Run(fmt.Sprintf("depth=%d", depth), func(b *testing.B) {
@@ -87,4 +137,16 @@ func recursiveSpanNamed(ctx context.Context, depth int) (err error) {
 		return recursiveSpanNamed(ctx, depth-1)
 	}
 	return ctx.Err()
+}
+
+func BenchmarkStartSpanParallel(b *testing.B) {
+	ctx := WithSubmitter(b.Context(), nullSubmitter{})
+
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			_, span := StartSpan(ctx)
+			span.Done(nil)
+		}
+	})
 }

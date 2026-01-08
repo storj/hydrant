@@ -29,6 +29,12 @@ func TestGrouperInclude(t *testing.T) {
 
 	t.Logf("%x", h1.Value())
 	t.Logf("%x", h2.Value())
+
+	t.Log(g.Annotations(hydrant.Event{
+		hydrant.String("key1", "value1"),
+		hydrant.Int("key3", 42),
+		hydrant.String("key2", "value2"),
+	}))
 }
 
 //

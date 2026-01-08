@@ -1,23 +1,26 @@
-package protocol
+package receiver
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
+
+	"github.com/zeebo/assert"
 
 	"github.com/histdb/histdb/flathist"
 
 	"storj.io/hydrant"
-	"storj.io/hydrant/config"
 	"storj.io/hydrant/process"
+	"storj.io/hydrant/submitters"
 )
 
 func TestProtocol(t *testing.T) {
-	done := make(chan struct{})
-	handler := NewHTTPHandler(new(loggingSub))
+	var exp, got loggingSub
 
+	done := make(chan struct{})
+	handler := NewHTTPHandler(&got)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handler.ServeHTTP(w, r)
 		defer func() { recover() }() // in case a race and we got two calls
@@ -25,7 +28,7 @@ func TestProtocol(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	sel := process.NewSelected(process.DefaultStore, []config.Expression{
+	sel := process.DefaultStore.Select([]string{
 		"go.os",
 		"go.arch",
 		"go.version",
@@ -40,10 +43,13 @@ func TestProtocol(t *testing.T) {
 		"os.ip",
 	})
 
-	sub := NewHTTPSubmitter(srv.URL, sel)
-	go sub.Run(t.Context())
+	hsub := submitters.NewHTTPSubmitter(srv.URL, sel, time.Minute, 10_000)
+	go hsub.Run(t.Context())
 
-	ctx := hydrant.WithSubmitter(t.Context(), sub)
+	ctx := hydrant.WithSubmitter(t.Context(), submitters.NewMultiSubmitter(
+		hsub,
+		&exp,
+	))
 
 	hist := flathist.NewHistogram()
 	for range 10 {
@@ -55,12 +61,14 @@ func TestProtocol(t *testing.T) {
 		)
 	}
 
-	sub.Trigger()
+	hsub.Trigger()
 	<-done
+
+	assert.Equal(t, len(exp), len(got))
 }
 
-type loggingSub struct{}
+type loggingSub []hydrant.Event
 
-func (*loggingSub) Submit(ctx context.Context, ev hydrant.Event) {
-	fmt.Printf("event: %v\n", ev)
-}
+func (l *loggingSub) Submit(ctx context.Context, ev hydrant.Event) { *l = append(*l, ev) }
+func (l *loggingSub) Children() []submitters.Submitter             { return nil }
+func (l *loggingSub) Handler() http.Handler                        { return nil }

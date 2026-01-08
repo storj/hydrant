@@ -2,28 +2,19 @@ package process
 
 import (
 	"storj.io/hydrant"
-	"storj.io/hydrant/config"
 )
 
-type Selected struct {
-	annotations []hydrant.Annotation
-}
-
-func NewSelected(s *Store, fields []config.Expression) *Selected {
+func (s *Store) Select(fields []string) []hydrant.Annotation {
 	selected := make(map[string]struct{}, len(fields))
 	for _, f := range fields {
 		selected[string(f)] = struct{}{}
 	}
 
-	rv := &Selected{}
+	var rv []hydrant.Annotation
 	for _, a := range s.Annotations() {
 		if _, exists := selected[a.Key]; exists {
-			rv.annotations = append(rv.annotations, a)
+			rv = append(rv, a)
 		}
 	}
 	return rv
-}
-
-func (s *Selected) Annotations() []hydrant.Annotation {
-	return s.annotations
 }

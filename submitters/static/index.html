@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Submitters</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h1>Submitters</h1>
+                <div class="tabs">
+                    <button class="tab-button active" data-tab="names">Names</button>
+                    <button class="tab-button" data-tab="tree">Tree</button>
+                </div>
+            </div>
+
+            <div class="sidebar-content">
+                <div class="tab-content" id="tree-tab">
+                    <div id="treeLoading" class="loading">Loading tree...</div>
+                    <div id="treeError" class="error" style="display: none;"></div>
+                    <div id="treeView" class="tree-view"></div>
+                </div>
+
+                <div class="tab-content active" id="names-tab">
+                    <div id="namesLoading" class="loading">Loading names...</div>
+                    <div id="namesError" class="error" style="display: none;"></div>
+                    <div id="namesView" class="names-view"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="main-content" id="main-content">
+            <div class="empty-state">Select a submitter from the left to view details</div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>

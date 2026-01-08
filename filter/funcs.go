@@ -23,6 +23,12 @@ func SetBuiltins(env *Environment) {
 	env.SetFunction("gte", Funcs{}.GreaterEqual)
 }
 
+func NewBuiltinEnvionment() *Environment {
+	env := new(Environment)
+	SetBuiltins(env)
+	return env
+}
+
 func (Funcs) Since(es *EvalState) bool {
 	ts, ok := pop(es, value.Value.Timestamp)
 	if !ok {

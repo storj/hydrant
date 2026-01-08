@@ -4,6 +4,7 @@ let metricExpandedState = {};
 let metricLogModeState = {};
 let svgTooltip = null;
 let knownKinds = {}; // Cache path -> kind mappings
+let lastQuery = null; // Track last query to detect changes
 
 // Tab Management
 document.querySelectorAll('.tab-button').forEach(button => {
@@ -238,7 +239,7 @@ function renderHydratorInterface(container, basePath) {
                             <span>Merge results</span>
                         </label>
                         <label style="display: flex; align-items: center; gap: 5px;">
-                            <input type="checkbox" id="linearSpacing" name="l" />
+                            <input type="checkbox" id="linearSpacing" name="l" checked />
                             <span>Linear spacing</span>
                         </label>
                         <label style="display: flex; align-items: center; gap: 5px;">
@@ -246,7 +247,7 @@ function renderHydratorInterface(container, basePath) {
                             <input type="number" id="numQuantiles" name="n" value="21" min="2"
                                    style="width: 60px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px;" />
                         </label>
-                        <label style="display: flex; align-items: center; gap: 5px;" id="expSpacingOption">
+                        <label style="display: flex; align-items: center; gap: 5px; display: none;" id="expSpacingOption">
                             <span>Exp spacing:</span>
                             <input type="number" id="expSpacing" name="e" value="8" min="1"
                                    style="width: 60px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px;" />
@@ -283,12 +284,19 @@ async function submitQuery(basePath) {
     const formData = new FormData(form);
     const params = new URLSearchParams();
 
-    params.append('q', formData.get('q'));
+    const queryText = formData.get('q');
+    params.append('q', queryText);
     if (document.getElementById('merged').checked) params.append('m', 'true');
     if (document.getElementById('linearSpacing').checked) params.append('l', 'true');
     params.append('n', formData.get('n'));
     if (!document.getElementById('linearSpacing').checked) {
         params.append('e', formData.get('e'));
+    }
+
+    // Clear expanded state only when query text changes
+    if (lastQuery !== queryText) {
+        metricExpandedState = {};
+        lastQuery = queryText;
     }
 
     showLoading('loading');

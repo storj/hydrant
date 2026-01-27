@@ -10,9 +10,10 @@ type noopSubmitter struct{}
 
 func (n noopSubmitter) Submit(ctx context.Context, ev Event) {}
 
-var defaultSubmitter = func() *atomic.Value {
-	v := new(atomic.Value)
-	v.Store(new(noopSubmitter))
+var defaultSubmitter = func() *atomic.Pointer[Submitter] {
+	v := new(atomic.Pointer[Submitter])
+	var sub Submitter = new(noopSubmitter)
+	v.Store(&sub)
 	return v
 }()
 
@@ -20,12 +21,11 @@ func SetDefaultSubmitter(s Submitter) {
 	if s == nil {
 		s = noopSubmitter{}
 	}
-	defaultSubmitter.Store(s)
+	defaultSubmitter.Store(&s)
 }
 
 func GetDefaultSubmitter() Submitter {
-	s, _ := defaultSubmitter.Load().(Submitter)
-	return s
+	return *defaultSubmitter.Load()
 }
 
 type submitterKeyType struct{}

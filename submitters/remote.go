@@ -12,7 +12,7 @@ import (
 
 	"storj.io/hydrant"
 	"storj.io/hydrant/config"
-	"storj.io/hydrant/utils"
+	"storj.io/hydrant/internal/utils"
 )
 
 const (

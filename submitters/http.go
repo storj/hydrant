@@ -11,8 +11,8 @@ import (
 	"github.com/zeebo/hmux"
 
 	"storj.io/hydrant"
-	"storj.io/hydrant/rw"
-	"storj.io/hydrant/utils"
+	"storj.io/hydrant/internal/rw"
+	"storj.io/hydrant/internal/utils"
 )
 
 type HTTPSubmitter struct {

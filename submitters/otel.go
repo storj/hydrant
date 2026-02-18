@@ -18,8 +18,8 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"storj.io/hydrant"
-	"storj.io/hydrant/otelutil"
-	"storj.io/hydrant/utils"
+	"storj.io/hydrant/internal/utils"
+	"storj.io/hydrant/utils/otelutil"
 	"storj.io/hydrant/value"
 )
 

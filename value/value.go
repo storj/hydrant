@@ -9,7 +9,7 @@ import (
 
 	"github.com/zeebo/errs/v2"
 
-	"storj.io/hydrant/rw"
+	"storj.io/hydrant/internal/rw"
 
 	"github.com/histdb/histdb/flathist"
 )

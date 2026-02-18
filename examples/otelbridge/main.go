@@ -24,9 +24,9 @@ import (
 	"storj.io/hydrant"
 	"storj.io/hydrant/config"
 	"storj.io/hydrant/filter"
-	"storj.io/hydrant/otelutil"
 	"storj.io/hydrant/process"
 	"storj.io/hydrant/submitters"
+	"storj.io/hydrant/utils/otelutil"
 )
 
 func main() {

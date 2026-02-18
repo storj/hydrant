@@ -13,9 +13,9 @@ import (
 	"storj.io/hydrant"
 	"storj.io/hydrant/config"
 	"storj.io/hydrant/filter"
-	"storj.io/hydrant/httputil"
 	"storj.io/hydrant/process"
 	"storj.io/hydrant/submitters"
+	"storj.io/hydrant/utils/httputil"
 )
 
 func main() {

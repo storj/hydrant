@@ -7,7 +7,7 @@ import (
 	"unique"
 
 	"storj.io/hydrant"
-	"storj.io/hydrant/utils"
+	"storj.io/hydrant/internal/utils"
 )
 
 type Grouper struct {

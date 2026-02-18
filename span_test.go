@@ -8,7 +8,7 @@ import (
 	"github.com/zeebo/assert"
 	"github.com/zeebo/mwc"
 
-	"storj.io/hydrant/utils"
+	"storj.io/hydrant/internal/utils"
 )
 
 func TestSpan(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/histdb/histdb/flathist"
-	"storj.io/hydrant/rw"
+	"storj.io/hydrant/internal/rw"
 	"storj.io/hydrant/value"
 )
 

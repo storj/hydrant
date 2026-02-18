@@ -14,8 +14,8 @@ import (
 
 	"github.com/histdb/histdb/flathist"
 	"storj.io/hydrant"
-	"storj.io/hydrant/group"
-	"storj.io/hydrant/utils"
+	"storj.io/hydrant/internal/group"
+	"storj.io/hydrant/internal/utils"
 	"storj.io/hydrant/value"
 )
 

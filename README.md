@@ -86,6 +86,9 @@ Runnable examples live in the [examples/](examples/) directory:
   Grouped events are exposed at `/metrics` with duration histograms, event
   counts, error counts, and active span gauge.
 
+- **[slog](examples/slog/main.go)** - Bridge Go's `log/slog` into hydrant.
+  All slog output becomes hydrant events linked to the active span.
+
 - **[remoteconfig](examples/remoteconfig/main.go)** - Central configuration
   with `RemoteSubmitter`. A config server serves pipeline JSON over HTTP and
   the client hot-swaps its pipeline on changes without restarting.
@@ -96,10 +99,34 @@ Run any example with:
 go run ./examples/basic
 ```
 
+## slog Integration
+
+The `utils/slogutil` package bridges Go's `log/slog` into hydrant. All slog
+attributes map to hydrant annotations with full type fidelity (integers stay
+integers, durations stay durations, etc). If a span is active on the context,
+log events are linked to it via span_id and trace_id.
+
+```go
+// Replace the default slog logger.
+slogutil.SetDefault(nil)
+
+// Or create a logger directly.
+logger := slogutil.Logger(&slogutil.HandlerOptions{
+    Level: slog.LevelDebug,
+})
+
+// Logs inside a span are linked automatically.
+ctx, span := hydrant.StartSpanNamed(ctx, "handle_request")
+defer span.Done(&err)
+slog.InfoContext(ctx, "processing", slog.String("user", "alice"))
+```
+
+See [examples/slog](examples/slog/main.go) for a full working example.
+
 ## HTTP and gRPC Middleware
 
-The `httputil` and `grpcutil` packages provide zero-effort instrumentation for
-HTTP handlers and gRPC services.
+The `utils/httputil` and `utils/grpcutil` packages provide zero-effort
+instrumentation for HTTP handlers and gRPC services.
 
 ### HTTP
 
@@ -318,6 +345,19 @@ since(key(start))                    # time since a timestamp
 rand()                               # random float [0, 1), useful for sampling
 ```
 
+Combine expressions with `&&` and `||`. A few common patterns:
+
+```
+# 10% sampling
+lt(rand(), 0.1)
+
+# only spans slower than 500ms
+has(span_id) && gt(key(duration), 0.5)
+
+# drop health checks, keep everything else
+not(eq(key(name), health_check))
+```
+
 The filter environment is extensible. Register custom functions with
 `env.SetFunction(name, fn)`.
 
@@ -405,17 +445,16 @@ HTTP batches via `process_fields`:
 
 ## Packages
 
-| Package              | Description                                                      |
-|----------------------|------------------------------------------------------------------|
-| `hydrant`            | Core API: `StartSpan`, `Log`, `Event`, `Annotation`, `Submitter` |
-| `hydrant/config`     | JSON-serializable pipeline configuration types                   |
-| `hydrant/submitters` | Built-in submitter implementations and web UI                    |
-| `hydrant/filter`     | Expression parser, compiler, and built-in functions              |
-| `hydrant/receiver`   | HTTP handler for receiving zstd-compressed event batches         |
-| `hydrant/httputil`   | HTTP middleware for automatic span instrumentation               |
-| `hydrant/grpcutil`   | gRPC interceptors for automatic span instrumentation             |
-| `hydrant/otelutil`   | OTLP trace/log receivers and conversion utilities                |
-| `hydrant/process`    | Automatic process metadata collection                            |
-| `hydrant/group`      | Event grouping by field values                                   |
-| `hydrant/value`      | Type-safe tagged union for annotation values                     |
-| `hydrant/rw`         | Varint binary encoding utilities                                 |
+| Package                  | Description                                                      |
+|--------------------------|------------------------------------------------------------------|
+| `hydrant`                | Core API: `StartSpan`, `Log`, `Event`, `Annotation`, `Submitter` |
+| `hydrant/config`         | JSON-serializable pipeline configuration types                   |
+| `hydrant/submitters`     | Built-in submitter implementations and web UI                    |
+| `hydrant/filter`         | Expression parser, compiler, and built-in functions              |
+| `hydrant/receiver`       | HTTP handler for receiving zstd-compressed event batches         |
+| `hydrant/utils/httputil` | HTTP middleware for automatic span instrumentation               |
+| `hydrant/utils/grpcutil` | gRPC interceptors for automatic span instrumentation             |
+| `hydrant/utils/otelutil` | OTLP trace/log receivers and conversion utilities                |
+| `hydrant/utils/slogutil` | Bridge Go's log/slog into hydrant events                         |
+| `hydrant/process`        | Automatic process metadata collection                            |
+| `hydrant/value`          | Type-safe tagged union for annotation values                     |

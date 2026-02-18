@@ -7,7 +7,7 @@ import (
 	"github.com/klauspost/compress/zstd"
 
 	"storj.io/hydrant"
-	"storj.io/hydrant/rw"
+	"storj.io/hydrant/internal/rw"
 )
 
 type Handler struct {

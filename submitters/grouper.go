@@ -156,6 +156,12 @@ func observableValue(v value.Value) (float32, bool) {
 	case value.KindFloat:
 		x, _ := v.Float()
 		return float32(x), true
+	case value.KindBool:
+		x, _ := v.Bool()
+		if x {
+			return 1, true
+		}
+		return 0, true
 	}
 	return 0, false
 }

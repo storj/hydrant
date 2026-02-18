@@ -82,6 +82,10 @@ Runnable examples live in the [examples/](examples/) directory:
   integration. Exports hydrant spans to Jaeger/any OTLP collector while also
   accepting incoming OTLP traces and logs.
 
+- **[prometheus](examples/prometheus/main.go)** - Prometheus metrics export.
+  Grouped events are exposed at `/metrics` with duration histograms, event
+  counts, error counts, and active span gauge.
+
 - **[remoteconfig](examples/remoteconfig/main.go)** - Central configuration
   with `RemoteSubmitter`. A config server serves pipeline JSON over HTTP and
   the client hot-swaps its pipeline on changes without restarting.
@@ -170,6 +174,31 @@ prefixed with `resource.`.
 See [examples/otelbridge](examples/otelbridge/main.go) for both directions
 working together.
 
+## Prometheus
+
+The `PrometheusSubmitter` exposes grouped metrics in Prometheus text format.
+Place it after a `GrouperSubmitter` in your pipeline so it receives aggregated
+histograms.
+
+```json
+{
+    "kind": "prometheus",
+    "namespace": "myapp",
+    "buckets": [0.01, 0.05, 0.1, 0.5, 1, 5]
+}
+```
+
+Both `namespace` and `buckets` are optional. The default namespace is `hydrant`
+and the default buckets are the standard Prometheus latency defaults
+(.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10).
+
+The `/metrics` endpoint on the submitter's handler exposes:
+
+- `{namespace}_duration_seconds` - histogram of event durations
+- `{namespace}_events_total` - counter of total events
+- `{namespace}_errors_total` - counter of events where `success` was false
+- `{namespace}_active_spans` - gauge of currently active spans
+
 ## Core Concepts
 
 ### Events and Annotations
@@ -193,21 +222,25 @@ and span IDs.
 `hydrant.IterateSpans` walks all currently active spans. Useful for building
 `/debug/spans` endpoints to diagnose hung requests.
 
+`hydrant.ActiveSpanCount` returns the number of currently active spans more
+cheaply then walking them all. Useful for checking for task leaks.
+
 ### Submitters
 
 A **Submitter** receives events and does something with them. They compose
 into pipelines:
 
-| Submitter              | Purpose                                               |
-|------------------------|-------------------------------------------------------|
-| **MultiSubmitter**     | Fan-out to multiple destinations                      |
-| **FilterSubmitter**    | Conditional routing based on filter expressions       |
-| **GrouperSubmitter**   | Time-windowed aggregation with histogram merging      |
-| **HTTPSubmitter**      | Batch and send events to a remote collector over HTTP |
-| **OTelSubmitter**      | Export events as OTLP protobuf to an OTel collector   |
-| **HydratorSubmitter**  | In-memory histogram storage with query API            |
-| **NullSubmitter**      | Discard events                                        |
-| **NamedSubmitter**     | Reference another submitter by name (enables reuse)   |
+| Submitter              | Purpose                                                |
+|------------------------|--------------------------------------------------------|
+| **MultiSubmitter**     | Fan-out to multiple destinations                       |
+| **FilterSubmitter**    | Conditional routing based on filter expressions        |
+| **GrouperSubmitter**   | Time-windowed aggregation with histogram merging       |
+| **HTTPSubmitter**      | Batch and send events to a remote collector over HTTP  |
+| **OTelSubmitter**      | Export events as OTLP protobuf to an OTel collector    |
+| **PrometheusSubmitter**| Expose grouped metrics as Prometheus /metrics endpoint |
+| **HydratorSubmitter**  | In-memory histogram storage with query API             |
+| **NullSubmitter**      | Discard events                                         |
+| **NamedSubmitter**     | Reference another submitter by name (enables reuse)    |
 
 ### Grouper and Histograms
 
@@ -247,11 +280,15 @@ multi-submitters.
         "hydrator": {
             "kind": "hydrator"
         },
+        "prom": {
+            "kind": "prometheus",
+            "namespace": "myapp"
+        },
         "default": {
             "kind": "grouper",
             "flush_interval": "30s",
             "group_by": ["name", "endpoint"],
-            "submitter": ["collector", "jaeger", "hydrator"]
+            "submitter": ["collector", "jaeger", "hydrator", "prom"]
         }
     }
 }

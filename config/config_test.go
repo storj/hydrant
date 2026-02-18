@@ -106,7 +106,8 @@ var exampleData = []byte(`{
 					],
 					"submitter": [
 						"collectora",
-						"hyd"
+						"hyd",
+						"prom"
 					]
 				}
 			},
@@ -127,6 +128,18 @@ var exampleData = []byte(`{
 		},
 		"null": {
 			"kind": "null"
+		},
+		"prom": {
+			"kind": "prometheus",
+			"namespace": "myapp",
+			"buckets": [
+				0.01,
+				0.05,
+				0.1,
+				0.5,
+				1,
+				5
+			]
 		}
 	}
 }

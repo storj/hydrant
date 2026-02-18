@@ -16,6 +16,7 @@ func TestSpan(t *testing.T) {
 	ctx := WithSubmitter(t.Context(), &bs)
 
 	func() {
+		assert.Equal(t, ActiveSpanCount(), 0)
 		assert.Nil(t, GetSpan(ctx))
 
 		ctx, span1 := StartSpanNamed(ctx, "span1",
@@ -32,6 +33,7 @@ func TestSpan(t *testing.T) {
 		)
 		defer span2.Done(nil)
 
+		assert.Equal(t, ActiveSpanCount(), 2)
 		for s := range IterateSpans {
 			t.Logf("span: %p %v", s, s.Name())
 		}
@@ -43,11 +45,13 @@ func TestSpan(t *testing.T) {
 		span2.Done(nil)
 
 		t.Log("after done")
+		assert.Equal(t, ActiveSpanCount(), 1)
 		for s := range IterateSpans {
 			t.Logf("span: %p %v", s, s.Name())
 		}
 	}()
 
+	assert.Equal(t, ActiveSpanCount(), 0)
 	for _, ev := range bs {
 		t.Logf("%+v", ev)
 	}
@@ -86,6 +90,7 @@ func TestIterateSpans(t *testing.T) {
 		}
 
 		assert.Equal(t, running, utils.Set(IterateSpans))
+		assert.Equal(t, len(running), ActiveSpanCount())
 	}
 }
 

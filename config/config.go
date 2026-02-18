@@ -78,6 +78,11 @@ type (
 		MaxBatchSize  int           `json:"max_batch_size"`
 	}
 
+	PrometheusSubmitter struct {
+		Namespace string    `json:"namespace"`
+		Buckets   []float64 `json:"buckets"`
+	}
+
 	HydratorSubmitter struct {
 	}
 
@@ -85,14 +90,15 @@ type (
 	}
 )
 
-func (MultiSubmitter) isSubmitter()    {}
-func (NamedSubmitter) isSubmitter()    {}
-func (FilterSubmitter) isSubmitter()   {}
-func (GrouperSubmitter) isSubmitter()  {}
-func (HTTPSubmitter) isSubmitter()     {}
-func (OTelSubmitter) isSubmitter()     {}
-func (HydratorSubmitter) isSubmitter() {}
-func (NullSubmitter) isSubmitter()     {}
+func (MultiSubmitter) isSubmitter()      {}
+func (NamedSubmitter) isSubmitter()      {}
+func (FilterSubmitter) isSubmitter()     {}
+func (GrouperSubmitter) isSubmitter()    {}
+func (HTTPSubmitter) isSubmitter()       {}
+func (OTelSubmitter) isSubmitter()       {}
+func (PrometheusSubmitter) isSubmitter() {}
+func (HydratorSubmitter) isSubmitter()   {}
+func (NullSubmitter) isSubmitter()       {}
 
 //
 // unmarshal support
@@ -127,6 +133,9 @@ func UnmarshalSubmitter(dec *jsontext.Decoder, dst *Submitter) error {
 
 		case "otel":
 			return unmarshalOneSubmitter[OTelSubmitter](raw, dst)
+
+		case "prometheus":
+			return unmarshalOneSubmitter[PrometheusSubmitter](raw, dst)
 
 		case "hydrator":
 			return unmarshalOneSubmitter[HydratorSubmitter](raw, dst)
@@ -215,6 +224,10 @@ func MarshalSubmitter(enc *jsontext.Encoder, src Submitter) error {
 	case *OTelSubmitter:
 		type otelSubmitter OTelSubmitter // prevent recursion
 		return marhsalOneSubmitter(enc, "otel", (*otelSubmitter)(cfg))
+
+	case *PrometheusSubmitter:
+		type prometheusSubmitter PrometheusSubmitter // prevent recursion
+		return marhsalOneSubmitter(enc, "prometheus", (*prometheusSubmitter)(cfg))
 
 	case *HydratorSubmitter:
 		type hydratorSubmitter HydratorSubmitter // prevent recursion

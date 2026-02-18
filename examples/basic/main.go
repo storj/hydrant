@@ -43,8 +43,7 @@ func main() {
 	}()
 
 	fmt.Println("web UI at http://localhost:9912")
-	http.Handle("/", sub.Handler())
-	panic(http.ListenAndServe(":9912", nil))
+	panic(http.ListenAndServe(":9912", sub.Handler()))
 }
 
 func simulateRequest(ctx context.Context) {

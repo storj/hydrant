@@ -95,6 +95,12 @@ func (c *constructor) Construct(cfg config.Submitter) (Submitter, error) {
 
 		return os, nil
 
+	case config.PrometheusSubmitter:
+		return NewPrometheusSubmitter(
+			cfg.Namespace,
+			cfg.Buckets,
+		), nil
+
 	case config.HydratorSubmitter:
 		return NewHydratorSubmitter(), nil
 

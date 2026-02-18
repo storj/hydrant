@@ -20,8 +20,9 @@ type listRoot struct {
 }
 
 type listRootData struct {
-	head atomic.Pointer[Span]
-	mu   sync.Mutex
+	head  atomic.Pointer[Span]
+	count atomic.Uint64
+	mu    sync.Mutex
 }
 
 func IterateSpans(f func(*Span) bool) {
@@ -36,6 +37,14 @@ func IterateSpans(f func(*Span) bool) {
 			}
 		}
 	}
+}
+
+func ActiveSpanCount() uint64 {
+	var count uint64
+	for i := range spanList {
+		count += spanList[i].count.Load()
+	}
+	return count
 }
 
 func pushSpan(s *Span) *listRoot {
@@ -54,6 +63,7 @@ func pushSpan(s *Span) *listRoot {
 		head.prev.Store(s)
 	}
 	root.head.Store(s)
+	root.count.Add(1)
 	root.mu.Unlock()
 
 	threadHintPool.Put(hintAny)
@@ -76,5 +86,6 @@ func popSpan(s *Span) {
 	if next != nil {
 		next.prev.Store(prev)
 	}
+	s.root.count.Add(^uint64(0))
 	s.root.mu.Unlock()
 }

@@ -31,7 +31,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		name = r.Method + " " + r.URL.Path
 	}
 
-	ctx, span := hydrant.StartSpanNamed(r.Context(), name,
+	traceId, parentId := ExtractTraceparent(r)
+	ctx, span := hydrant.StartRemoteSpanNamed(r.Context(), name, parentId, traceId,
 		hydrant.String("http.method", r.Method),
 		hydrant.String("http.path", r.URL.Path),
 		hydrant.String("http.remote_addr", r.RemoteAddr),

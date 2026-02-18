@@ -1,4 +1,4 @@
-package receiver
+package httputil
 
 import (
 	"context"
@@ -20,7 +20,7 @@ func TestProtocol(t *testing.T) {
 	var exp, got loggingSub
 
 	done := make(chan struct{})
-	handler := NewHTTPHandler(&got)
+	handler := NewReceiver(&got)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handler.ServeHTTP(w, r)
 		defer func() { recover() }() // in case a race and we got two calls

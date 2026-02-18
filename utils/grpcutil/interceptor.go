@@ -26,7 +26,8 @@ func UnaryInterceptor(name func(ctx context.Context, info *grpc.UnaryServerInfo)
 			n = name(ctx, info)
 		}
 
-		ctx, span := hydrant.StartSpanNamed(ctx, n,
+		traceId, parentId := ExtractTraceparent(ctx)
+		ctx, span := hydrant.StartRemoteSpanNamed(ctx, n, parentId, traceId,
 			hydrant.String("grpc.method", info.FullMethod),
 		)
 
@@ -66,7 +67,8 @@ func StreamInterceptor(name func(ctx context.Context, info *grpc.StreamServerInf
 			n = name(ctx, info)
 		}
 
-		ctx, span := hydrant.StartSpanNamed(ctx, n,
+		traceId, parentId := ExtractTraceparent(ctx)
+		ctx, span := hydrant.StartRemoteSpanNamed(ctx, n, parentId, traceId,
 			hydrant.String("grpc.method", info.FullMethod),
 		)
 

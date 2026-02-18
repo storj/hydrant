@@ -1,4 +1,4 @@
-package receiver
+package httputil
 
 import (
 	"io"
@@ -10,12 +10,14 @@ import (
 	"storj.io/hydrant/internal/rw"
 )
 
-type Handler struct {
+// Receiver is an http.Handler that accepts batched hydrant events sent by the
+// HTTPSubmitter and forwards them to a Submitter.
+type Receiver struct {
 	sub hydrant.Submitter
 	dec *zstd.Decoder
 }
 
-func NewHTTPHandler(sub hydrant.Submitter) *Handler {
+func NewReceiver(sub hydrant.Submitter) *Receiver {
 	dec, err := zstd.NewReader(nil,
 		zstd.WithDecoderMaxMemory(64<<20),
 	)
@@ -23,13 +25,13 @@ func NewHTTPHandler(sub hydrant.Submitter) *Handler {
 		panic(err) // this can only happen with invalid options
 	}
 
-	return &Handler{
+	return &Receiver{
 		sub: sub,
 		dec: dec,
 	}
 }
 
-func (h *Handler) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+func (h *Receiver) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return

@@ -51,4 +51,14 @@ func BenchmarkLog(b *testing.B) {
 			)
 		}
 	})
+
+	b.Run("WithSpan", func(b *testing.B) {
+		ctx, span := StartSpan(ctx)
+		defer span.Done(nil)
+
+		b.ReportAllocs()
+		for b.Loop() {
+			Log(ctx, "benchmark message")
+		}
+	})
 }

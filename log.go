@@ -18,16 +18,16 @@ func Log(ctx context.Context, message string, annotations ...Annotation) {
 		1: String("func", frame.Function),
 		2: Int("line", int64(frame.Line)),
 		3: String("message", message),
-	})[:4])
+		4: Timestamp("timestamp", time.Now()),
+	})[:5])
 
 	if span := GetSpan(ctx); span != nil {
 		ev = append(ev,
 			SpanId("span_id", span.SpanId()),
-			TraceId("trace_id", span.TraceId()),
+			span.buf[sysIdxTraceId], // avoids allocating a copy of the trace id value
 		)
 	}
 
-	ev = append(ev, Timestamp("timestamp", time.Now()))
 	ev = append(ev, annotations...)
 
 	GetSubmitter(ctx).Submit(ctx, ev)

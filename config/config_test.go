@@ -122,6 +122,9 @@ var exampleData = []byte(`{
 		},
 		"jaeger": {
 			"kind": "otel",
+			"process_fields": [
+				"os.hostname"
+			],
 			"endpoint": "http://localhost:4318",
 			"flush_interval": "5s",
 			"max_batch_size": 1000

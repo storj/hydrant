@@ -88,6 +88,7 @@ func (c *constructor) Construct(cfg config.Submitter) (Submitter, error) {
 	case config.OTelSubmitter:
 		os := NewOTelSubmitter(
 			cfg.Endpoint,
+			c.env.Process.Select(cfg.ProcessFields),
 			cfg.FlushInterval,
 			cfg.MaxBatchSize,
 		)

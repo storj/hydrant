@@ -73,6 +73,7 @@ type (
 	}
 
 	OTelSubmitter struct {
+		ProcessFields []string      `json:"process_fields"`
 		Endpoint      string        `json:"endpoint"`
 		FlushInterval time.Duration `json:"flush_interval,format:units"`
 		MaxBatchSize  int           `json:"max_batch_size"`

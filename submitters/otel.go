@@ -29,6 +29,7 @@ type OTelSubmitter struct {
 	tracesURL string
 	logsURL   string
 	interval  time.Duration
+	resource  *resourcepb.Resource
 
 	mu      sync.Mutex
 	spans   []hydrant.Event
@@ -38,14 +39,24 @@ type OTelSubmitter struct {
 
 func NewOTelSubmitter(
 	endpoint string,
+	process []hydrant.Annotation,
 	interval time.Duration,
 	batchSize int,
 ) *OTelSubmitter {
 	endpoint = strings.TrimRight(endpoint, "/")
+
+	var attrs []*commonpb.KeyValue
+	for _, a := range process {
+		if kv := otelutil.AnnotationToAttribute(a); kv != nil {
+			attrs = append(attrs, kv)
+		}
+	}
+
 	return &OTelSubmitter{
 		tracesURL: endpoint + "/v1/traces",
 		logsURL:   endpoint + "/v1/logs",
 		interval:  interval,
+		resource:  &resourcepb.Resource{Attributes: attrs},
 		spans:     make([]hydrant.Event, 0, batchSize),
 		logs:      make([]hydrant.Event, 0, batchSize),
 		trigger:   make(chan struct{}, 1),
@@ -117,7 +128,7 @@ func (o *OTelSubmitter) flushSpans(ctx context.Context, events []hydrant.Event) 
 
 	req := &colltracepb.ExportTraceServiceRequest{
 		ResourceSpans: []*tracepb.ResourceSpans{{
-			Resource:   &resourcepb.Resource{},
+			Resource:   o.resource,
 			ScopeSpans: []*tracepb.ScopeSpans{{Spans: otelSpans}},
 		}},
 	}
@@ -137,7 +148,7 @@ func (o *OTelSubmitter) flushLogs(ctx context.Context, events []hydrant.Event) {
 
 	req := &colllogspb.ExportLogsServiceRequest{
 		ResourceLogs: []*logspb.ResourceLogs{{
-			Resource:  &resourcepb.Resource{},
+			Resource:  o.resource,
 			ScopeLogs: []*logspb.ScopeLogs{{LogRecords: records}},
 		}},
 	}

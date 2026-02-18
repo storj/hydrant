@@ -65,6 +65,16 @@ func (h *HydratorSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
 		case value.KindHistogram:
 			// protected above
 
+		// TODO: do we want these? i don't think so man. too tired to figure it out now.
+		case value.KindTraceId:
+			x, _ := ann.Value.TraceId()
+			buf = append(buf, hex.EncodeToString(x[:])...)
+
+		// TODO: do we want these? i don't think so man. too tired to figure it out now.
+		case value.KindSpanId:
+			x, _ := ann.Value.SpanId()
+			buf = append(buf, hex.EncodeToString(x[:])...)
+
 		case value.KindInt:
 			x, _ := ann.Value.Int()
 			buf = strconv.AppendInt(buf, x, 10)
@@ -92,10 +102,6 @@ func (h *HydratorSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
 		case value.KindTimestamp:
 			x, _ := ann.Value.Timestamp()
 			buf = append(buf, x.String()...)
-
-		case value.KindIdentifier:
-			x, _ := ann.Value.Identifier()
-			buf = strconv.AppendUint(buf, x, 10)
 		}
 
 		buf = append(buf, ',')

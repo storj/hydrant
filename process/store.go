@@ -23,7 +23,7 @@ func NewStore() *Store {
 			"start":     true,
 			"span_id":   true,
 			"parent_id": true,
-			"task_id":   true,
+			"trace_id":  true,
 			"duration":  true,
 			"success":   true,
 		}}

@@ -2,6 +2,7 @@ package value
 
 import (
 	"bytes"
+	"encoding/binary"
 	"math"
 	"time"
 	"unsafe"
@@ -18,21 +19,38 @@ var sentinels [7]byte
 type Kind uint8
 
 const (
-	KindEmpty      Kind = 0
-	KindString     Kind = 1
-	KindBytes      Kind = 2
-	KindHistogram  Kind = 3
-	KindInt        Kind = 4
-	KindUint       Kind = 5
-	KindDuration   Kind = 6
-	KindFloat      Kind = 7
-	KindBool       Kind = 8
-	KindTimestamp  Kind = 9
-	KindIdentifier Kind = 10
+	KindEmpty Kind = 0
+
+	// pointer kinds
+
+	KindString    Kind = 1
+	KindBytes     Kind = 2
+	KindHistogram Kind = 3
+	KindTraceId   Kind = 4
+
+	// value kinds
+
+	KindSpanId    Kind = 5
+	KindInt       Kind = 6
+	KindUint      Kind = 7
+	KindDuration  Kind = 8
+	KindFloat     Kind = 9
+	KindBool      Kind = 10
+	KindTimestamp Kind = 11
+
+	kindLargest Kind = 12
+)
+
+const (
+	pointerCount   = 5
+	pointerLoShift = 3
+	pointerHiShift = 64 - pointerLoShift
+	pointerLoMask  = 1<<pointerLoShift - 1
+	pointerHiMask  = pointerLoMask << pointerHiShift
 )
 
 func (k Kind) sentinel() unsafe.Pointer {
-	return unsafe.Pointer(&sentinels[k-4])
+	return unsafe.Pointer(&sentinels[k-pointerCount])
 }
 
 func isSentinel(ptr unsafe.Pointer) bool {
@@ -49,41 +67,41 @@ type Value struct {
 func (v Value) Kind() Kind {
 	d := uintptr(v.ptr) - uintptr(unsafe.Pointer(&sentinels[0]))
 	if d < uintptr(len(sentinels)) {
-		return Kind(d + 4)
+		return Kind(d + pointerCount)
 	}
-	return Kind(v.data >> 62)
+	return Kind(v.data >> pointerHiShift)
 }
 
 func String(x string) (v Value) {
-	if uint64(len(x))>>62 == 0 {
+	if uint64(len(x))>>pointerHiShift == 0 {
 		v = Value{
 			ptr:  unsafe.Pointer(unsafe.StringData(x)),
-			data: 0b01<<62 | uint64(len(x)),
+			data: uint64(KindString)<<pointerHiShift | uint64(len(x)),
 		}
 	}
 	return v
 }
 
 func (v Value) String() (x string, ok bool) {
-	if ok = v.data>>62 == 0b01 && !isSentinel(v.ptr); ok {
-		x = unsafe.String((*byte)(v.ptr), int(v.data&^(0b11<<62)))
+	if ok = v.data>>pointerHiShift == uint64(KindString) && !isSentinel(v.ptr); ok {
+		x = unsafe.String((*byte)(v.ptr), int(v.data&^pointerHiMask))
 	}
 	return x, ok
 }
 
 func Bytes(x []byte) (v Value) {
-	if uint64(len(x))>>62 == 0 {
+	if uint64(len(x))>>pointerHiShift == 0 {
 		v = Value{
 			ptr:  unsafe.Pointer(unsafe.SliceData(x)),
-			data: 0b10<<62 | uint64(len(x)),
+			data: uint64(KindBytes)<<pointerHiShift | uint64(len(x)),
 		}
 	}
 	return v
 }
 
 func (v Value) Bytes() (x []byte, ok bool) {
-	if ok = v.data>>62 == 0b10 && !isSentinel(v.ptr); ok {
-		x = unsafe.Slice((*byte)(v.ptr), int(v.data&^(0b11<<62)))
+	if ok = v.data>>pointerHiShift == uint64(KindBytes) && !isSentinel(v.ptr); ok {
+		x = unsafe.Slice((*byte)(v.ptr), int(v.data&^pointerHiMask))
 	}
 	return x, ok
 }
@@ -92,15 +110,29 @@ func Histogram(x *flathist.Histogram) (v Value) {
 	if x != nil {
 		v = Value{
 			ptr:  unsafe.Pointer(x),
-			data: 0b11 << 62,
+			data: uint64(KindHistogram) << pointerHiShift,
 		}
 	}
 	return v
 }
 
 func (v Value) Histogram() (x *flathist.Histogram, ok bool) {
-	if ok = v.data>>62 == 0b11 && !isSentinel(v.ptr); ok {
+	if ok = v.data>>pointerHiShift == uint64(KindHistogram) && !isSentinel(v.ptr); ok {
 		x = (*flathist.Histogram)(v.ptr)
+	}
+	return x, ok
+}
+
+func TraceId(x [16]byte) (v Value) {
+	return Value{
+		ptr:  unsafe.Pointer(&x),
+		data: uint64(KindTraceId) << pointerHiShift,
+	}
+}
+
+func (v Value) TraceId() (x [16]byte, ok bool) {
+	if ok = v.data>>pointerHiShift == uint64(KindTraceId) && !isSentinel(v.ptr); ok {
+		x = *(*[16]byte)(v.ptr)
 	}
 	return x, ok
 }
@@ -193,16 +225,16 @@ func (v Value) Timestamp() (t time.Time, ok bool) {
 	return t, ok
 }
 
-func Identifier(x uint64) Value {
+func SpanId(x [8]byte) Value {
 	return Value{
-		ptr:  KindIdentifier.sentinel(),
-		data: x,
+		ptr:  KindSpanId.sentinel(),
+		data: binary.LittleEndian.Uint64(x[:]),
 	}
 }
 
-func (v Value) Identifier() (x uint64, ok bool) {
-	if ok = v.ptr == KindIdentifier.sentinel(); ok {
-		x = v.data
+func (v Value) SpanId() (x [8]byte, ok bool) {
+	if ok = v.ptr == KindSpanId.sentinel(); ok {
+		binary.LittleEndian.PutUint64(x[:], v.data)
 	}
 	return x, ok
 }
@@ -221,16 +253,18 @@ func (v Value) AsAny() (x any) {
 		x, _ = v.Bool()
 	case KindTimestamp.sentinel():
 		x, _ = v.Timestamp()
-	case KindIdentifier.sentinel():
-		x, _ = v.Identifier()
+	case KindSpanId.sentinel():
+		x, _ = v.SpanId()
 	default:
-		switch v.data >> 62 {
-		case 0b01:
+		switch v.data >> pointerHiShift {
+		case uint64(KindString):
 			x, _ = v.String()
-		case 0b10:
+		case uint64(KindBytes):
 			x, _ = v.Bytes()
-		case 0b11:
+		case uint64(KindHistogram):
 			x, _ = v.Histogram()
+		case uint64(KindTraceId):
+			x, _ = v.TraceId()
 		}
 	}
 	return x
@@ -259,6 +293,16 @@ func (v Value) AppendTo(buf []byte) []byte {
 		x, _ := v.Histogram()
 		return x.AppendTo(buf)
 
+	case KindTraceId:
+		x, _ := v.TraceId()
+		buf = rw.AppendBytes(buf, x[:])
+		return buf
+
+	case KindSpanId:
+		x, _ := v.SpanId()
+		buf = rw.AppendBytes(buf, x[:])
+		return buf
+
 	default:
 		buf = rw.AppendVarint(buf, v.data)
 	}
@@ -272,7 +316,7 @@ func (v *Value) ReadFrom(buf []byte) ([]byte, error) {
 	r := rw.NewReader(buf)
 
 	k := Kind(r.ReadUint8())
-	if k < KindEmpty || k > KindIdentifier {
+	if k < KindEmpty || k >= kindLargest {
 		return nil, errs.Errorf("invalid kind: %d", k)
 	}
 
@@ -299,6 +343,12 @@ func (v *Value) ReadFrom(buf []byte) ([]byte, error) {
 
 		*v = Histogram(h)
 		return rem, nil
+
+	case KindTraceId:
+		*v = TraceId([16]byte(r.ReadBytes(16)))
+
+	case KindSpanId:
+		*v = SpanId([8]byte(r.ReadBytes(8)))
 
 	default:
 		*v = Value{

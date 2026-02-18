@@ -90,7 +90,8 @@ var exampleData = []byte(`{
 					"submitter": [
 						"collectora",
 						"null",
-						"hyd"
+						"hyd",
+						"jaeger"
 					]
 				}
 			},
@@ -117,6 +118,12 @@ var exampleData = []byte(`{
 		],
 		"hyd": {
 			"kind": "hydrator"
+		},
+		"jaeger": {
+			"kind": "otel",
+			"endpoint": "http://localhost:4318",
+			"flush_interval": "5s",
+			"max_batch_size": 1000
 		},
 		"null": {
 			"kind": "null"

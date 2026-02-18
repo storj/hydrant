@@ -25,7 +25,7 @@ func TestSpan(t *testing.T) {
 		defer span1.Done(nil)
 
 		assert.Equal(t, GetSpan(ctx), span1)
-		assert.Equal(t, span1.Task(), span1.Parent())
+		assert.Equal(t, span1.SpanId(), span1.ParentSpanId())
 
 		ctx, span2 := StartSpanNamed(ctx, "span2",
 			String("child_key", "child_value"),
@@ -37,8 +37,8 @@ func TestSpan(t *testing.T) {
 		}
 
 		assert.Equal(t, GetSpan(ctx), span2)
-		assert.Equal(t, span2.Parent(), span1.Id())
-		assert.Equal(t, span1.Task(), span2.Task())
+		assert.Equal(t, span2.ParentSpanId(), span1.SpanId())
+		assert.Equal(t, span1.TraceId(), span2.TraceId())
 
 		span2.Done(nil)
 

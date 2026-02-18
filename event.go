@@ -62,12 +62,20 @@ func (a *Annotation) ReadFrom(buf []byte) ([]byte, error) {
 }
 
 func (a Annotation) String() string {
-	if h, ok := a.Value.Histogram(); ok {
+	switch a.Value.Kind() {
+	case value.KindHistogram:
+		h, _ := a.Value.Histogram()
 		tot, sum, avg, vari := h.Summary()
 		min, max := h.Min(), h.Max()
 		return fmt.Sprintf(
 			"%s=[tot:%d sum:%0.1f avg:%0.1f var:%0.1f min:%0.1f max:%0.1f]",
 			a.Key, tot, sum, avg, vari, min, max)
+	case value.KindTraceId:
+		x, _ := a.Value.TraceId()
+		return fmt.Sprintf("%s=%x", a.Key, x)
+	case value.KindSpanId:
+		x, _ := a.Value.SpanId()
+		return fmt.Sprintf("%s=%x", a.Key, x)
 	}
 	return fmt.Sprintf("%s=%v", a.Key, a.Value.AsAny())
 }
@@ -82,6 +90,14 @@ func Bytes(key string, val []byte) Annotation {
 
 func Histogram(key string, val *flathist.Histogram) Annotation {
 	return Annotation{Key: key, Value: value.Histogram(val)}
+}
+
+func TraceId(key string, val [16]byte) Annotation {
+	return Annotation{Key: key, Value: value.TraceId(val)}
+}
+
+func SpanId(key string, val [8]byte) Annotation {
+	return Annotation{Key: key, Value: value.SpanId(val)}
 }
 
 func Int(key string, val int64) Annotation {
@@ -106,8 +122,4 @@ func Bool(key string, val bool) Annotation {
 
 func Timestamp(key string, val time.Time) Annotation {
 	return Annotation{Key: key, Value: value.Timestamp(val)}
-}
-
-func Identifier(key string, val uint64) Annotation {
-	return Annotation{Key: key, Value: value.Identifier(val)}
 }

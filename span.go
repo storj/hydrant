@@ -17,7 +17,7 @@ const (
 	sysIdxSpanId
 	sysIdxStartTime
 	sysIdxSuccess
-	sysIdxTaskId
+	sysIdxTraceId
 	sysIdxTimestamp
 	sysIdxMax
 )
@@ -38,11 +38,11 @@ func (s *Span) Context() context.Context       { return (*contextSpan)(s) }
 func (s *Span) ParentContext() context.Context { return s.ctx }
 func (s *Span) IsDone() bool                   { return s.done.Load() }
 
-func (s *Span) Name() string         { x, _ := s.buf[sysIdxName].Value.String(); return x }
-func (s *Span) StartTime() time.Time { x, _ := s.buf[sysIdxStartTime].Value.Timestamp(); return x }
-func (s *Span) Id() uint64           { x, _ := s.buf[sysIdxSpanId].Value.Uint(); return x }
-func (s *Span) Parent() uint64       { x, _ := s.buf[sysIdxParentId].Value.Uint(); return x }
-func (s *Span) Task() uint64         { x, _ := s.buf[sysIdxTaskId].Value.Uint(); return x }
+func (s *Span) Name() string          { x, _ := s.buf[sysIdxName].Value.String(); return x }
+func (s *Span) StartTime() time.Time  { x, _ := s.buf[sysIdxStartTime].Value.Timestamp(); return x }
+func (s *Span) SpanId() [8]byte       { x, _ := s.buf[sysIdxSpanId].Value.SpanId(); return x }
+func (s *Span) ParentSpanId() [8]byte { x, _ := s.buf[sysIdxParentId].Value.SpanId(); return x }
+func (s *Span) TraceId() [16]byte     { x, _ := s.buf[sysIdxTraceId].Value.TraceId(); return x }
 
 func (s *Span) Annotations() []Annotation {
 	s.mu.Lock()
@@ -85,34 +85,46 @@ func StartSpan(ctx context.Context, annotations ...Annotation) (context.Context,
 }
 
 func StartSpanNamed(ctx context.Context, name string, annotations ...Annotation) (context.Context, *Span) {
-	var parent, task uint64
 	if span := GetSpan(ctx); span != nil {
-		parent, task = span.Id(), span.Task()
+		return startChildSpanNamed(ctx, name, span, annotations...)
 	}
-	return StartRemoteSpanNamed(ctx, name, parent, task, annotations...)
+	return StartRemoteSpanNamed(ctx, name, [8]byte{}, [16]byte{}, annotations...)
 }
 
-func StartRemoteSpanNamed(ctx context.Context, name string, parent, task uint64, annotations ...Annotation) (context.Context, *Span) {
-	var id uint64
-	for id == 0 {
-		id = mwc.Uint64()
-	}
-	for task == 0 {
-		task = mwc.Uint64()
-	}
-	if parent == 0 {
-		parent = task
+func startChildSpanNamed(ctx context.Context, name string, parent *Span, annotations ...Annotation) (context.Context, *Span) {
+	var id [8]byte
+	for id == [8]byte{} {
+		_, _ = mwc.Read(id[:])
 	}
 
+	return createSpan(ctx, name, id, parent.SpanId(), parent.buf[sysIdxTraceId], annotations...)
+}
+
+func StartRemoteSpanNamed(ctx context.Context, name string, parentId [8]byte, traceId [16]byte, annotations ...Annotation) (context.Context, *Span) {
+	var spanId [8]byte
+	for spanId == [8]byte{} {
+		_, _ = mwc.Read(spanId[:])
+	}
+	for traceId == [16]byte{} {
+		_, _ = mwc.Read(traceId[:])
+	}
+	if parentId == [8]byte{} {
+		parentId = spanId
+	}
+
+	return createSpan(ctx, name, spanId, parentId, TraceId("trace_id", traceId), annotations...)
+}
+
+func createSpan(ctx context.Context, name string, spanId, parentId [8]byte, traceId Annotation, annotations ...Annotation) (context.Context, *Span) {
 	s := &Span{
 		ctx: ctx,
 		sub: GetSubmitter(ctx),
 		buf: [sysIdxMax]Annotation{
 			sysIdxName:      String("name", name),
 			sysIdxStartTime: Timestamp("start", time.Now()),
-			sysIdxSpanId:    Identifier("span_id", id),
-			sysIdxParentId:  Identifier("parent_id", parent),
-			sysIdxTaskId:    Identifier("task_id", task),
+			sysIdxSpanId:    SpanId("span_id", spanId),
+			sysIdxParentId:  SpanId("parent_id", parentId),
+			sysIdxTraceId:   traceId,
 		},
 	}
 	s.ev = append(s.buf[:], annotations...)

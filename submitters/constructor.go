@@ -85,6 +85,16 @@ func (c *constructor) Construct(cfg config.Submitter) (Submitter, error) {
 
 		return hs, nil
 
+	case config.OTelSubmitter:
+		os := NewOTelSubmitter(
+			cfg.Endpoint,
+			cfg.FlushInterval,
+			cfg.MaxBatchSize,
+		)
+		c.runnable = append(c.runnable, os)
+
+		return os, nil
+
 	case config.HydratorSubmitter:
 		return NewHydratorSubmitter(), nil
 

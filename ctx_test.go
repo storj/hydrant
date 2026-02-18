@@ -1,8 +1,13 @@
 package hydrant
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestSetDefaultSubmitter(t *testing.T) {
+	defer SetDefaultSubmitter(GetSubmitter(context.Background()))
+
 	type t1 struct{ Submitter }
 	type t2 struct{ Submitter }
 

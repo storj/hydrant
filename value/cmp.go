@@ -23,6 +23,16 @@ func Less(left, right Value) (b bool, ok bool) {
 		rd, _ := right.Histogram()
 		return ld.Min() < rd.Min(), true
 
+	case uint64(KindTraceId)<<8 | uint64(KindTraceId):
+		l, _ := left.TraceId()
+		r, _ := right.TraceId()
+		return string(l[:]) < string(r[:]), true
+
+	case uint64(KindSpanId)<<8 | uint64(KindSpanId):
+		l, _ := left.SpanId()
+		r, _ := right.SpanId()
+		return string(l[:]) < string(r[:]), true
+
 	case uint64(KindInt)<<8 | uint64(KindInt):
 		l, _ := left.Int()
 		r, _ := right.Int()
@@ -52,11 +62,6 @@ func Less(left, right Value) (b bool, ok bool) {
 		l, _ := left.Timestamp()
 		r, _ := right.Timestamp()
 		return l.Before(r), true
-
-	case uint64(KindIdentifier)<<8 | uint64(KindIdentifier):
-		l, _ := left.Identifier()
-		r, _ := right.Identifier()
-		return l < r, true
 	}
 }
 
@@ -64,19 +69,23 @@ func Equal(left, right Value) bool {
 	if left.ptr == right.ptr {
 		return left.data == right.data
 	}
-	switch (left.data>>62)<<2 | (right.data >> 62) {
-	case 0b0101:
+	switch (left.data>>pointerHiShift)<<pointerLoShift | (right.data >> pointerHiShift) {
+	case 0b001_001:
 		lstr, _ := left.String()
 		rstr, _ := right.String()
 		return lstr == rstr
-	case 0b1010:
+	case 0b010_010:
 		lb, _ := left.Bytes()
 		rb, _ := right.Bytes()
 		return string(lb) == string(rb)
-	case 0b1111:
+	case 0b011_011:
 		ld, _ := left.Histogram()
 		rd, _ := right.Histogram()
 		return ld.Equal(rd)
+	case 0b100_100:
+		lt, _ := left.TraceId()
+		rt, _ := right.TraceId()
+		return lt == rt
 	}
 	return false
 }

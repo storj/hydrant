@@ -72,6 +72,12 @@ type (
 		MaxBatchSize  int           `json:"max_batch_size"`
 	}
 
+	OTelSubmitter struct {
+		Endpoint      string        `json:"endpoint"`
+		FlushInterval time.Duration `json:"flush_interval,format:units"`
+		MaxBatchSize  int           `json:"max_batch_size"`
+	}
+
 	HydratorSubmitter struct {
 	}
 
@@ -84,6 +90,7 @@ func (NamedSubmitter) isSubmitter()    {}
 func (FilterSubmitter) isSubmitter()   {}
 func (GrouperSubmitter) isSubmitter()  {}
 func (HTTPSubmitter) isSubmitter()     {}
+func (OTelSubmitter) isSubmitter()     {}
 func (HydratorSubmitter) isSubmitter() {}
 func (NullSubmitter) isSubmitter()     {}
 
@@ -117,6 +124,9 @@ func UnmarshalSubmitter(dec *jsontext.Decoder, dst *Submitter) error {
 
 		case "http":
 			return unmarshalOneSubmitter[HTTPSubmitter](raw, dst)
+
+		case "otel":
+			return unmarshalOneSubmitter[OTelSubmitter](raw, dst)
 
 		case "hydrator":
 			return unmarshalOneSubmitter[HydratorSubmitter](raw, dst)
@@ -201,6 +211,10 @@ func MarshalSubmitter(enc *jsontext.Encoder, src Submitter) error {
 	case *HTTPSubmitter:
 		type httpSubmitter HTTPSubmitter // prevent recursion
 		return marhsalOneSubmitter(enc, "http", (*httpSubmitter)(cfg))
+
+	case *OTelSubmitter:
+		type otelSubmitter OTelSubmitter // prevent recursion
+		return marhsalOneSubmitter(enc, "otel", (*otelSubmitter)(cfg))
 
 	case *HydratorSubmitter:
 		type hydratorSubmitter HydratorSubmitter // prevent recursion

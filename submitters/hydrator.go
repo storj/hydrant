@@ -43,8 +43,9 @@ func (h *HydratorSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
 		if ann.Value.Kind() == value.KindHistogram {
 			hasHist = true
 			continue
-		}
-		if strings.HasPrefix(ann.Key, "agg:") {
+		} else if ann.Value.Kind() == value.KindTraceId || ann.Value.Kind() == value.KindSpanId {
+			continue
+		} else if strings.HasPrefix(ann.Key, "agg:") {
 			continue
 		}
 
@@ -62,18 +63,8 @@ func (h *HydratorSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
 			x, _ := ann.Value.Bytes()
 			buf = append(buf, hex.EncodeToString(x)...)
 
-		case value.KindHistogram:
+		case value.KindHistogram, value.KindTraceId, value.KindSpanId:
 			// protected above
-
-		// TODO: do we want these? i don't think so man. too tired to figure it out now.
-		case value.KindTraceId:
-			x, _ := ann.Value.TraceId()
-			buf = append(buf, hex.EncodeToString(x[:])...)
-
-		// TODO: do we want these? i don't think so man. too tired to figure it out now.
-		case value.KindSpanId:
-			x, _ := ann.Value.SpanId()
-			buf = append(buf, hex.EncodeToString(x[:])...)
 
 		case value.KindInt:
 			x, _ := ann.Value.Int()
@@ -170,7 +161,7 @@ func (h *HydratorSubmitter) Annotations(cb func([]byte) bool) bool {
 
 func (h *HydratorSubmitter) Handler() http.Handler {
 	return hmux.Dir{
-		"/tree":  constHandler(treeify(h)),
+		"/tree":  constJSONHandler(treeify(h)),
 		"/query": http.HandlerFunc(h.queryHandler),
 	}
 }

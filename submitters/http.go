@@ -129,6 +129,6 @@ func (h *HTTPSubmitter) flush(ctx context.Context) {
 
 func (h *HTTPSubmitter) Handler() http.Handler {
 	return hmux.Dir{
-		"/tree": constHandler(treeify(h)),
+		"/tree": constJSONHandler(treeify(h)),
 	}
 }

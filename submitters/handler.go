@@ -21,7 +21,7 @@ func treeify(sub Submitter) any {
 	}
 }
 
-func constHandler(value any) http.Handler {
+func constJSONHandler(value any) http.Handler {
 	resp, err := json.Marshal(value)
 	if err != nil {
 		panic(err)

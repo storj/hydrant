@@ -21,7 +21,6 @@ func (f *Filter) String() string {
 	return fmt.Sprintf("(filter %q %v %v)", f.filter, f.prog, anyfy(f.vals))
 }
 
-// TODO: rename to environment or something
 type Environment struct {
 	funcs []func(*EvalState) bool
 	names map[string]uint32

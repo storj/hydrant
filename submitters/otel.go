@@ -151,7 +151,7 @@ func (o *OTelSubmitter) flushLogs(ctx context.Context, events []hydrant.Event) {
 
 func (o *OTelSubmitter) Handler() http.Handler {
 	return hmux.Dir{
-		"/tree": constHandler(treeify(o)),
+		"/tree": constJSONHandler(treeify(o)),
 	}
 }
 

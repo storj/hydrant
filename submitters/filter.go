@@ -42,7 +42,7 @@ func (f *FilterSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
 
 func (f *FilterSubmitter) Handler() http.Handler {
 	return hmux.Dir{
-		"/tree": constHandler(treeify(f)),
+		"/tree": constJSONHandler(treeify(f)),
 		"/sub":  f.sub.Handler(),
 	}
 }

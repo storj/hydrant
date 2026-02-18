@@ -91,26 +91,22 @@ func NewLogReceiver(sub hydrant.Submitter) http.Handler {
 	})
 }
 
-func spanToEvent(span *tracepb.Span, resourceAttrs []hydrant.Annotation) hydrant.Event {
-	startNano := int64(span.StartTimeUnixNano)
-	endNano := int64(span.EndTimeUnixNano)
-	startTime := time.Unix(0, startNano)
-	endTime := time.Unix(0, endNano)
+func sliceToSpanId(b []byte) (o [8]byte)   { copy(o[:], b); return }
+func sliceToTraceId(b []byte) (o [16]byte) { copy(o[:], b); return }
 
-	success := true
-	if span.Status != nil && span.Status.Code == tracepb.Status_STATUS_CODE_ERROR {
-		success = false
-	}
+func spanToEvent(span *tracepb.Span, resourceAttrs []hydrant.Annotation) hydrant.Event {
+	startTime := time.Unix(0, int64(span.StartTimeUnixNano))
+	endTime := time.Unix(0, int64(span.EndTimeUnixNano))
 
 	ev := make(hydrant.Event, 0, 8+len(span.Attributes)+len(resourceAttrs))
 	ev = append(ev,
 		hydrant.String("name", span.Name),
 		hydrant.Timestamp("start", startTime),
-		hydrant.SpanId("span_id", [8]byte(span.SpanId)),         // TODO: panic safety
-		hydrant.SpanId("parent_id", [8]byte(span.ParentSpanId)), // TODO: panic safety
-		hydrant.TraceId("trace_id", [16]byte(span.TraceId)),     // TODO: panic safety
+		hydrant.SpanId("span_id", sliceToSpanId(span.SpanId)),
+		hydrant.SpanId("parent_id", sliceToSpanId(span.ParentSpanId)),
+		hydrant.TraceId("trace_id", sliceToTraceId(span.TraceId)),
 		hydrant.Duration("duration", endTime.Sub(startTime)),
-		hydrant.Bool("success", success),
+		hydrant.Bool("success", span.Status == nil || span.Status.Code != tracepb.Status_STATUS_CODE_ERROR),
 		hydrant.Timestamp("timestamp", endTime),
 	)
 

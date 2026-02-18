@@ -23,6 +23,6 @@ func (n *NullSubmitter) Submit(ctx context.Context, ev hydrant.Event) {}
 
 func (n *NullSubmitter) Handler() http.Handler {
 	return hmux.Dir{
-		"/tree": constHandler(treeify(n)),
+		"/tree": constJSONHandler(treeify(n)),
 	}
 }

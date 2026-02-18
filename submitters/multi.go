@@ -39,7 +39,7 @@ func (m *MultiSubmitter) Handler() http.Handler {
 	}
 
 	return hmux.Dir{
-		"/tree": constHandler(treeify(m)),
+		"/tree": constJSONHandler(treeify(m)),
 		"/sub":  subs,
 	}
 }

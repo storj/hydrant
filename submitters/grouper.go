@@ -192,7 +192,7 @@ func (g *GrouperSubmitter) flush(ctx context.Context, start time.Time) time.Time
 
 func (g *GrouperSubmitter) Handler() http.Handler {
 	return hmux.Dir{
-		"/tree": constHandler(treeify(g)),
+		"/tree": constJSONHandler(treeify(g)),
 		"/sub":  g.sub.Handler(),
 	}
 }

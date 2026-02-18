@@ -82,6 +82,10 @@ Runnable examples live in the [examples/](examples/) directory:
   integration. Exports hydrant spans to Jaeger/any OTLP collector while also
   accepting incoming OTLP traces and logs.
 
+- **[remoteconfig](examples/remoteconfig/main.go)** - Central configuration
+  with `RemoteSubmitter`. A config server serves pipeline JSON over HTTP and
+  the client hot-swaps its pipeline on changes without restarting.
+
 Run any example with:
 
 ```

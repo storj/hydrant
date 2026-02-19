@@ -1346,10 +1346,17 @@ async function fetchAndRenderTraces(container, basePath) {
             header.innerHTML = `
                 <span class="trace-id">${escapeHtml(traceIdShort)}</span>
                 ${badge}
-                <span class="trace-root-name">${escapeHtml(rootName)}</span>
+                <span class="trace-root-name-link">${escapeHtml(rootName)}</span>
                 <span class="trace-span-count">${trace.spans.length} span${trace.spans.length !== 1 ? 's' : ''}</span>
                 <span class="trace-duration">${escapeHtml(rootDuration)}</span>
             `;
+
+            // Root name link opens waterfall
+            const rootLink = header.querySelector('.trace-root-name-link');
+            rootLink.addEventListener('click', (e) => {
+                e.stopPropagation();
+                renderTraceWaterfall(container, trace, basePath);
+            });
 
             header.addEventListener('click', () => {
                 row.classList.toggle('expanded');
@@ -1404,6 +1411,206 @@ async function fetchAndRenderTraces(container, basePath) {
     } catch (e) {
         container.innerHTML = `<div class="error">Failed to load traces: ${e.message}</div>`;
     }
+}
+
+// Pack parsed spans into swim lanes using greedy algorithm.
+// Input: array of {name, startMs, durationMs, success, annotations}
+// Output: array of lanes, each lane is array of {span, leftPct, widthPct}
+function packSpansIntoLanes(spans, traceStartMs, traceDurationMs) {
+    // Sort by duration descending (longest first), then by start time
+    const sorted = spans.slice().sort((a, b) => b.durationMs - a.durationMs || a.startMs - b.startMs);
+
+    // Each lane tracks sorted intervals so we can check gaps, not just the tail.
+    const lanes = []; // each entry: {intervals: [{startMs, endMs}], items: [...]}
+
+    function fitsInLane(lane, startMs, endMs) {
+        for (const iv of lane.intervals) {
+            if (startMs < iv.endMs && endMs > iv.startMs) return false;
+        }
+        return true;
+    }
+
+    function insertInterval(lane, startMs, endMs) {
+        // Insert keeping sorted order by startMs
+        let i = 0;
+        while (i < lane.intervals.length && lane.intervals[i].startMs < startMs) i++;
+        lane.intervals.splice(i, 0, { startMs, endMs });
+    }
+
+    for (const span of sorted) {
+        const spanEnd = span.startMs + span.durationMs;
+        const leftPct = traceDurationMs > 0 ? ((span.startMs - traceStartMs) / traceDurationMs) * 100 : 0;
+        const widthPct = traceDurationMs > 0 ? (span.durationMs / traceDurationMs) * 100 : 100;
+
+        let placed = false;
+        for (const lane of lanes) {
+            if (fitsInLane(lane, span.startMs, spanEnd)) {
+                lane.items.push({ span, leftPct, widthPct });
+                insertInterval(lane, span.startMs, spanEnd);
+                placed = true;
+                break;
+            }
+        }
+        if (!placed) {
+            lanes.push({
+                intervals: [{ startMs: span.startMs, endMs: spanEnd }],
+                items: [{ span, leftPct, widthPct }],
+            });
+        }
+    }
+    return lanes;
+}
+
+// Format milliseconds as a human-readable duration string.
+function formatDurationMs(ms) {
+    if (ms >= 60000) return (ms / 60000).toFixed(1) + 'm';
+    if (ms >= 1000) return (ms / 1000).toFixed(1) + 's';
+    if (ms >= 1) return ms.toFixed(1) + 'ms';
+    if (ms >= 0.001) return (ms * 1000).toFixed(0) + 'µs';
+    return ms.toFixed(3) + 'ms';
+}
+
+// Render a waterfall view for a single trace.
+function renderTraceWaterfall(container, trace, basePath) {
+    // Parse spans
+    const parsed = [];
+    let rootName = '';
+    for (const span of trace.spans) {
+        const map = {};
+        const annotations = [];
+        for (const a of span) {
+            map[a.key] = a.value;
+            annotations.push(a);
+        }
+        if (!map['duration']) continue; // skip non-span events (logs)
+
+        const startMs = map['start'] ? new Date(map['start']).getTime() : 0;
+        const endMs = map['timestamp'] ? new Date(map['timestamp']).getTime() : 0;
+        const durationMs = endMs - startMs;
+        const success = map['success'] === 'true';
+        const name = map['name'] || '';
+
+        // Detect root span
+        if (map['span_id'] && map['span_id'] === map['parent_id']) {
+            rootName = name;
+        }
+
+        parsed.push({ name, startMs, durationMs, success, annotations, map });
+    }
+
+    if (parsed.length === 0) {
+        container.innerHTML = '<div class="empty-state">No spans to display</div>';
+        return;
+    }
+
+    // Compute trace time bounds
+    const traceStartMs = Math.min(...parsed.map(s => s.startMs));
+    const traceEndMs = Math.max(...parsed.map(s => s.startMs + s.durationMs));
+    const traceDurationMs = traceEndMs - traceStartMs;
+
+    // Pack into lanes
+    const lanes = packSpansIntoLanes(parsed, traceStartMs, traceDurationMs);
+
+    // Build UI
+    container.innerHTML = '';
+
+    // Header
+    const header = document.createElement('div');
+    header.className = 'waterfall-header';
+
+    const backBtn = document.createElement('button');
+    backBtn.className = 'back-btn';
+    backBtn.textContent = '\u2190 Back';
+    backBtn.addEventListener('click', () => fetchAndRenderTraces(container, basePath));
+    header.appendChild(backBtn);
+
+    const title = document.createElement('span');
+    title.className = 'waterfall-title';
+    title.textContent = (rootName || 'Trace') + '  ' + trace.trace_id;
+    header.appendChild(title);
+
+    const dur = document.createElement('span');
+    dur.className = 'waterfall-duration';
+    dur.textContent = formatDurationMs(traceDurationMs);
+    header.appendChild(dur);
+
+    container.appendChild(header);
+
+    // Waterfall body
+    const wfContainer = document.createElement('div');
+    wfContainer.className = 'waterfall-container';
+
+    // Time axis
+    const timeline = document.createElement('div');
+    timeline.className = 'waterfall-timeline';
+    const tickCount = 5;
+    for (let i = 0; i <= tickCount; i++) {
+        const tick = document.createElement('span');
+        tick.textContent = formatDurationMs((traceDurationMs * i) / tickCount);
+        timeline.appendChild(tick);
+    }
+    wfContainer.appendChild(timeline);
+
+    // Tooltip (shared)
+    let tooltip = container.querySelector('.waterfall-tooltip');
+    if (!tooltip) {
+        tooltip = document.createElement('div');
+        tooltip.className = 'waterfall-tooltip';
+        document.body.appendChild(tooltip);
+    }
+
+    // Lanes
+    for (const lane of lanes) {
+        const laneDiv = document.createElement('div');
+        laneDiv.className = 'waterfall-lane';
+
+        for (const { span, leftPct, widthPct } of lane.items) {
+            const bar = document.createElement('div');
+            bar.className = 'waterfall-bar ' + (span.success ? 'waterfall-bar-success' : 'waterfall-bar-error');
+            bar.style.left = leftPct + '%';
+            bar.style.width = Math.max(widthPct, 0.3) + '%';
+
+            const label = document.createElement('span');
+            label.className = 'waterfall-bar-label';
+            label.textContent = span.name;
+            bar.appendChild(label);
+
+            // Tooltip handlers
+            bar.addEventListener('mouseenter', () => {
+                const offsetMs = span.startMs - traceStartMs;
+                let html = `<div class="tt-name">${escapeHtml(span.name)}</div>`;
+                html += `<div class="tt-row"><span class="tt-label">Duration:</span> ${formatDurationMs(span.durationMs)}</div>`;
+                html += `<div class="tt-row"><span class="tt-label">Offset:</span> +${formatDurationMs(offsetMs)}</div>`;
+                html += `<div class="tt-row"><span class="tt-label">Status:</span> <span class="${span.success ? 'tt-success' : 'tt-error'}">${span.success ? 'success' : 'error'}</span></div>`;
+
+                // Show user annotations (skip system fields)
+                const sysKeys = new Set(['name', 'start', 'timestamp', 'duration', 'success', 'span_id', 'parent_id', 'trace_id']);
+                for (const a of span.annotations) {
+                    if (!sysKeys.has(a.key)) {
+                        html += `<div class="tt-row"><span class="tt-label">${escapeHtml(a.key)}:</span> ${escapeHtml(a.value)}</div>`;
+                    }
+                }
+
+                tooltip.innerHTML = html;
+                tooltip.style.display = 'block';
+            });
+
+            bar.addEventListener('mousemove', (e) => {
+                tooltip.style.left = (e.clientX + 12) + 'px';
+                tooltip.style.top = (e.clientY + 12) + 'px';
+            });
+
+            bar.addEventListener('mouseleave', () => {
+                tooltip.style.display = 'none';
+            });
+
+            laneDiv.appendChild(bar);
+        }
+
+        wfContainer.appendChild(laneDiv);
+    }
+
+    container.appendChild(wfContainer);
 }
 
 function escapeHtml(s) {

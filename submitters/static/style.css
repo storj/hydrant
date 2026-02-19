@@ -451,3 +451,154 @@ h1 {
 .trace-row.expanded .trace-details {
     display: block;
 }
+
+/* Waterfall View */
+.waterfall-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-shrink: 0;
+}
+
+.waterfall-header .back-btn {
+    padding: 6px 14px;
+    background: #f0f0f0;
+    color: #333;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.waterfall-header .back-btn:hover {
+    background: #e0e0e0;
+}
+
+.waterfall-header .waterfall-title {
+    font-weight: 600;
+    color: #333;
+    font-size: 15px;
+}
+
+.waterfall-header .waterfall-duration {
+    color: #555;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+
+.waterfall-container {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    background: #1e1e1e;
+    border-radius: 4px;
+    padding: 12px;
+}
+
+.waterfall-timeline {
+    display: flex;
+    justify-content: space-between;
+    padding: 0 0 6px 0;
+    border-bottom: 1px solid #333;
+    margin-bottom: 4px;
+    font-size: 11px;
+    color: #6c757d;
+    font-variant-numeric: tabular-nums;
+}
+
+.waterfall-lane {
+    position: relative;
+    height: 24px;
+    margin-bottom: 2px;
+}
+
+.waterfall-bar {
+    position: absolute;
+    top: 2px;
+    height: 20px;
+    border-radius: 3px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    overflow: hidden;
+    min-width: 2px;
+    transition: opacity 0.1s;
+}
+
+.waterfall-bar:hover {
+    opacity: 0.85;
+}
+
+.waterfall-bar-success {
+    background: #2563eb;
+}
+
+.waterfall-bar-error {
+    background: #dc3545;
+}
+
+.waterfall-bar-label {
+    padding: 0 4px;
+    font-size: 11px;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    pointer-events: none;
+}
+
+.waterfall-tooltip {
+    position: fixed;
+    display: none;
+    background: rgba(0, 0, 0, 0.92);
+    color: #d4d4d4;
+    padding: 8px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    pointer-events: none;
+    z-index: 1000;
+    max-width: 400px;
+    line-height: 1.5;
+    border: 1px solid #555;
+}
+
+.waterfall-tooltip strong {
+    color: #fff;
+}
+
+.waterfall-tooltip .tt-name {
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 4px;
+}
+
+.waterfall-tooltip .tt-row {
+    display: flex;
+    gap: 8px;
+}
+
+.waterfall-tooltip .tt-label {
+    color: #999;
+}
+
+.waterfall-tooltip .tt-success {
+    color: #98c379;
+}
+
+.waterfall-tooltip .tt-error {
+    color: #e06c75;
+}
+
+.trace-root-name-link {
+    color: #4a9eff;
+    cursor: pointer;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.trace-root-name-link:hover {
+    text-decoration: underline;
+}

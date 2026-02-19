@@ -27,7 +27,20 @@ func constJSONHandler(value any) http.Handler {
 		panic(err)
 	}
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		w.Write(resp)
+	})
+}
+
+type stat struct {
+	Name  string `json:"name"`
+	Value uint64 `json:"value"`
+}
+
+func statsHandler(fn func() []stat) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(fn())
 	})
 }
 

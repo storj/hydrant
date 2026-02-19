@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/zeebo/hmux"
 
@@ -37,6 +38,11 @@ type PrometheusSubmitter struct {
 	buckets   []float64
 	live      liveBuffer
 
+	stats struct {
+		received atomic.Uint64
+		skipped  atomic.Uint64
+	}
+
 	mu     sync.Mutex
 	series map[string]*promSeries
 }
@@ -65,6 +71,7 @@ func (p *PrometheusSubmitter) Children() []Submitter {
 
 func (p *PrometheusSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
 	p.live.Record(ev)
+	p.stats.received.Add(1)
 
 	// Only process events that have a duration histogram.
 	hasDuration := false
@@ -75,6 +82,7 @@ func (p *PrometheusSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
 		}
 	}
 	if !hasDuration {
+		p.stats.skipped.Add(1)
 		return
 	}
 
@@ -164,6 +172,16 @@ func (p *PrometheusSubmitter) Handler() http.Handler {
 		"/tree":    constJSONHandler(treeify(p)),
 		"/live":    p.live.Handler(),
 		"/metrics": http.HandlerFunc(p.metricsHandler),
+		"/stats": statsHandler(func() []stat {
+			p.mu.Lock()
+			seriesActive := uint64(len(p.series))
+			p.mu.Unlock()
+			return []stat{
+				{"received", p.stats.received.Load()},
+				{"skipped", p.stats.skipped.Load()},
+				{"series_active", seriesActive},
+			}
+		}),
 	}
 }
 

@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/zeebo/errs/v2"
 	"github.com/zeebo/hmux"
 	colllogspb "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	colltracepb "go.opentelemetry.io/proto/otlp/collector/trace/v1"
@@ -31,6 +34,14 @@ type OTelSubmitter struct {
 	interval  time.Duration
 	resource  *resourcepb.Resource
 	live      liveBuffer
+
+	stats struct {
+		received     atomic.Uint64
+		spansDropped atomic.Uint64
+		logsDropped  atomic.Uint64
+		flushes      atomic.Uint64
+		flushErrors  atomic.Uint64
+	}
 
 	mu      sync.Mutex
 	spans   []hydrant.Event
@@ -71,18 +82,23 @@ func (o *OTelSubmitter) Children() []Submitter {
 
 func (o *OTelSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
 	o.live.Record(ev)
+	o.stats.received.Add(1)
 
 	o.mu.Lock()
 	if otelutil.IsSpanEvent(ev) {
 		if len(o.spans) < cap(o.spans) {
 			o.spans = append(o.spans, ev)
+		} else {
+			o.stats.spansDropped.Add(1)
 		}
 	} else {
 		if len(o.logs) < cap(o.logs) {
 			o.logs = append(o.logs, ev)
+		} else {
+			o.stats.logsDropped.Add(1)
 		}
 	}
-	full := len(o.spans) >= cap(o.spans) || len(o.logs) >= cap(o.logs)
+	full := len(o.spans) >= cap(o.spans)*2/3 || len(o.logs) >= cap(o.logs)*2/3
 	o.mu.Unlock()
 
 	if full {
@@ -110,10 +126,10 @@ func (o *OTelSubmitter) Run(ctx context.Context) {
 
 func (o *OTelSubmitter) flush(ctx context.Context) {
 	o.mu.Lock()
-	spans := o.spans
-	logs := o.logs
-	o.spans = make([]hydrant.Event, 0, cap(spans))
-	o.logs = make([]hydrant.Event, 0, cap(logs))
+	spans := slices.Clone(o.spans)
+	o.spans = o.spans[:0]
+	logs := slices.Clone(o.logs)
+	o.logs = o.logs[:0]
 	o.mu.Unlock()
 
 	if len(spans) > 0 {
@@ -139,9 +155,14 @@ func (o *OTelSubmitter) flushSpans(ctx context.Context, events []hydrant.Event) 
 
 	data, err := proto.Marshal(req)
 	if err != nil {
+		o.stats.flushErrors.Add(1)
 		return
 	}
-	otelPost(ctx, o.tracesURL, data)
+	if err := otelPost(ctx, o.tracesURL, data); err != nil {
+		o.stats.flushErrors.Add(1)
+		return
+	}
+	o.stats.flushes.Add(1)
 }
 
 func (o *OTelSubmitter) flushLogs(ctx context.Context, events []hydrant.Event) {
@@ -159,15 +180,29 @@ func (o *OTelSubmitter) flushLogs(ctx context.Context, events []hydrant.Event) {
 
 	data, err := proto.Marshal(req)
 	if err != nil {
+		o.stats.flushErrors.Add(1)
 		return
 	}
-	otelPost(ctx, o.logsURL, data)
+	if err := otelPost(ctx, o.logsURL, data); err != nil {
+		o.stats.flushErrors.Add(1)
+		return
+	}
+	o.stats.flushes.Add(1)
 }
 
 func (o *OTelSubmitter) Handler() http.Handler {
 	return hmux.Dir{
 		"/tree": constJSONHandler(treeify(o)),
 		"/live": o.live.Handler(),
+		"/stats": statsHandler(func() []stat {
+			return []stat{
+				{"received", o.stats.received.Load()},
+				{"spans_dropped", o.stats.spansDropped.Load()},
+				{"logs_dropped", o.stats.logsDropped.Load()},
+				{"flushes", o.stats.flushes.Load()},
+				{"flush_errors", o.stats.flushErrors.Load()},
+			}
+		}),
 	}
 }
 
@@ -246,16 +281,21 @@ func eventToOTelLogRecord(ev hydrant.Event) *logspb.LogRecord {
 	return lr
 }
 
-func otelPost(ctx context.Context, url string, data []byte) {
+func otelPost(ctx context.Context, url string, data []byte) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(data))
 	if err != nil {
-		return
+		return err
 	}
 	req.Header.Set("Content-Type", "application/x-protobuf")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return
+		return err
 	}
 	resp.Body.Close()
+
+	if resp.StatusCode/100 != 2 {
+		return errs.Errorf("otel collector returned %d", resp.StatusCode)
+	}
+	return nil
 }

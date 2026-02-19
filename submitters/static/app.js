@@ -7,6 +7,7 @@ let knownKinds = {}; // Cache path -> kind mappings
 let lastQuery = null; // Track last query to detect changes
 let liveEventSource = null; // Active SSE connection
 let liveAutoScroll = true; // Auto-scroll live view
+let statsInterval = null; // Auto-refresh interval for stats
 
 // Tab Management
 document.querySelectorAll('.tab-button').forEach(button => {
@@ -246,7 +247,59 @@ function showSubmitterDetail(path, kind) {
     }
 }
 
-// Render Hydrator query interface (with tabs: Query / Live)
+function stopStatsRefresh() {
+    if (statsInterval) {
+        clearInterval(statsInterval);
+        statsInterval = null;
+    }
+}
+
+// Fetch stats and render into a container (used for initial load and refresh)
+async function fetchAndRenderStats(container, basePath) {
+    try {
+        const resp = await fetch(`${basePath}/stats`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const stats = await resp.json();
+
+        container.innerHTML = '';
+        if (!stats || stats.length === 0) {
+            container.innerHTML = '<div class="empty-state">No stats available</div>';
+            return;
+        }
+
+        const table = document.createElement('table');
+        table.style.cssText = 'border-collapse: collapse; font-size: 14px; margin-top: 10px;';
+
+        for (const s of stats) {
+            const row = document.createElement('tr');
+
+            const nameCell = document.createElement('td');
+            nameCell.style.cssText = 'padding: 6px 20px 6px 0; color: #6c757d;';
+            nameCell.textContent = s.name;
+            row.appendChild(nameCell);
+
+            const valueCell = document.createElement('td');
+            valueCell.style.cssText = 'padding: 6px 0; font-weight: 500; font-variant-numeric: tabular-nums;';
+            valueCell.textContent = s.value.toLocaleString();
+            row.appendChild(valueCell);
+
+            table.appendChild(row);
+        }
+        container.appendChild(table);
+    } catch (e) {
+        container.innerHTML = `<div class="error">Failed to load stats: ${e.message}</div>`;
+    }
+}
+
+// Start stats view with auto-refresh every 10 seconds
+function startStatsView(container, basePath) {
+    stopStatsRefresh();
+    container.innerHTML = '<div class="loading">Loading stats...</div>';
+    fetchAndRenderStats(container, basePath);
+    statsInterval = setInterval(() => fetchAndRenderStats(container, basePath), 10000);
+}
+
+// Render Hydrator query interface (with tabs: Query / Live / Stats)
 function renderHydratorInterface(container, basePath) {
     container.innerHTML = `
         <div style="margin-bottom: 0; padding-bottom: 15px; border-bottom: 2px solid #dee2e6;">
@@ -255,6 +308,7 @@ function renderHydratorInterface(container, basePath) {
             <div class="tabs" id="hydratorTabs" style="margin-bottom: 0; border-bottom: none;">
                 <button class="tab-button active" data-htab="query">Query</button>
                 <button class="tab-button" data-htab="live">Live</button>
+                <button class="tab-button" data-htab="stats">Stats</button>
             </div>
         </div>
         <div id="hydratorQueryTab" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
@@ -299,26 +353,31 @@ function renderHydratorInterface(container, basePath) {
             <div id="results" style="flex: 1; overflow-y: auto;"></div>
         </div>
         <div id="hydratorLiveTab" style="flex: 1; display: none; flex-direction: column; overflow: hidden; margin-top: 15px;"></div>
+        <div id="hydratorStatsTab" style="flex: 1; display: none; flex-direction: column; overflow: hidden; margin-top: 15px;"></div>
     `;
 
     // Hydrator tab switching
+    const hydratorTabMap = {
+        query: document.getElementById('hydratorQueryTab'),
+        live: document.getElementById('hydratorLiveTab'),
+        stats: document.getElementById('hydratorStatsTab'),
+    };
+
     document.querySelectorAll('#hydratorTabs .tab-button').forEach(btn => {
         btn.addEventListener('click', () => {
             const tab = btn.getAttribute('data-htab');
             document.querySelectorAll('#hydratorTabs .tab-button').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
 
-            const queryTab = document.getElementById('hydratorQueryTab');
-            const liveTab = document.getElementById('hydratorLiveTab');
+            closeLiveStream();
+            for (const [key, el] of Object.entries(hydratorTabMap)) {
+                el.style.display = key === tab ? 'flex' : 'none';
+            }
 
-            if (tab === 'query') {
-                closeLiveStream();
-                queryTab.style.display = 'flex';
-                liveTab.style.display = 'none';
-            } else {
-                queryTab.style.display = 'none';
-                liveTab.style.display = 'flex';
-                startLiveView(liveTab, basePath);
+            if (tab === 'live') {
+                startLiveView(hydratorTabMap.live, basePath);
+            } else if (tab === 'stats') {
+                startStatsView(hydratorTabMap.stats, basePath);
             }
         });
     });
@@ -894,24 +953,56 @@ function createQuantilesSVG(quantiles, useLogScale) {
     return svg;
 }
 
-// Render live interface for non-hydrator submitters
+// Render tabbed interface (Live / Stats) for non-hydrator submitters
 function renderLiveInterface(container, path, kind) {
     container.innerHTML = `
-        <div style="margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #dee2e6;">
+        <div style="margin-bottom: 0; padding-bottom: 15px; border-bottom: 2px solid #dee2e6;">
             <h2 style="margin: 0 0 5px 0; color: #333;">${kind}</h2>
-            <div style="color: #6c757d; font-size: 14px;">Path: ${path}</div>
+            <div style="color: #6c757d; font-size: 14px; margin-bottom: 10px;">Path: ${path}</div>
+            <div class="tabs" id="submitterTabs" style="margin-bottom: 0; border-bottom: none;">
+                <button class="tab-button active" data-stab="live">Live</button>
+                <button class="tab-button" data-stab="stats">Stats</button>
+            </div>
         </div>
-        <div id="liveContainer" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;"></div>
+        <div id="submitterLiveTab" style="flex: 1; display: flex; flex-direction: column; overflow: hidden; margin-top: 15px;"></div>
+        <div id="submitterStatsTab" style="flex: 1; display: none; flex-direction: column; overflow: hidden; margin-top: 15px;"></div>
     `;
-    startLiveView(document.getElementById('liveContainer'), path);
+
+    const tabMap = {
+        live: document.getElementById('submitterLiveTab'),
+        stats: document.getElementById('submitterStatsTab'),
+    };
+
+    document.querySelectorAll('#submitterTabs .tab-button').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tab = btn.getAttribute('data-stab');
+            document.querySelectorAll('#submitterTabs .tab-button').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            closeLiveStream();
+            for (const [key, el] of Object.entries(tabMap)) {
+                el.style.display = key === tab ? 'flex' : 'none';
+            }
+
+            if (tab === 'live') {
+                startLiveView(tabMap.live, path);
+            } else if (tab === 'stats') {
+                startStatsView(tabMap.stats, path);
+            }
+        });
+    });
+
+    // Start with Live tab active
+    startLiveView(tabMap.live, path);
 }
 
-// Close any active SSE connection
+// Close any active SSE connection and stats refresh
 function closeLiveStream() {
     if (liveEventSource) {
         liveEventSource.close();
         liveEventSource = null;
     }
+    stopStatsRefresh();
 }
 
 // Start the live event viewer in a container

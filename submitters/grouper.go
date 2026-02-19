@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unique"
 
@@ -37,6 +38,13 @@ type GrouperSubmitter struct {
 	sub      Submitter
 	interval time.Duration
 	live     liveBuffer
+
+	stats struct {
+		received      atomic.Uint64
+		ungroupable   atomic.Uint64
+		flushes       atomic.Uint64
+		groupsFlushed atomic.Uint64
+	}
 
 	mu     sync.Mutex
 	groups map[unique.Handle[string]]*groupedEvents
@@ -78,9 +86,11 @@ func (g *GrouperSubmitter) Run(ctx context.Context) {
 
 func (g *GrouperSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
 	g.live.Record(ev)
+	g.stats.received.Add(1)
 
 	key, ok := g.grouper.Group(ev)
 	if !ok {
+		g.stats.ungroupable.Add(1)
 		return
 	}
 
@@ -176,6 +186,9 @@ func (g *GrouperSubmitter) flush(ctx context.Context, start time.Time) time.Time
 
 	end := time.Now()
 
+	g.stats.flushes.Add(1)
+	g.stats.groupsFlushed.Add(uint64(len(g.groups)))
+
 	for _, ge := range g.groups {
 		ge.event = append(ge.event,
 			hydrant.Timestamp("agg:start_time", start),
@@ -205,5 +218,13 @@ func (g *GrouperSubmitter) Handler() http.Handler {
 		"/tree": constJSONHandler(treeify(g)),
 		"/live": g.live.Handler(),
 		"/sub":  g.sub.Handler(),
+		"/stats": statsHandler(func() []stat {
+			return []stat{
+				{"received", g.stats.received.Load()},
+				{"ungroupable", g.stats.ungroupable.Load()},
+				{"flushes", g.stats.flushes.Load()},
+				{"groups_flushed", g.stats.groupsFlushed.Load()},
+			}
+		}),
 	}
 }

@@ -3,6 +3,7 @@ package submitters
 import (
 	"context"
 	"net/http"
+	"sync/atomic"
 
 	"github.com/zeebo/hmux"
 
@@ -11,6 +12,10 @@ import (
 
 type NullSubmitter struct {
 	live liveBuffer
+
+	stats struct {
+		received atomic.Uint64
+	}
 }
 
 func NewNullSubmitter() *NullSubmitter {
@@ -23,11 +28,17 @@ func (n *NullSubmitter) Children() []Submitter {
 
 func (n *NullSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
 	n.live.Record(ev)
+	n.stats.received.Add(1)
 }
 
 func (n *NullSubmitter) Handler() http.Handler {
 	return hmux.Dir{
 		"/tree": constJSONHandler(treeify(n)),
 		"/live": n.live.Handler(),
+		"/stats": statsHandler(func() []stat {
+			return []stat{
+				{"received", n.stats.received.Load()},
+			}
+		}),
 	}
 }

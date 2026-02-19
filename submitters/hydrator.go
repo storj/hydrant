@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/zeebo/hmux"
 
@@ -20,7 +21,12 @@ import (
 )
 
 type HydratorSubmitter struct {
-	live  liveBuffer
+	live liveBuffer
+
+	stats struct {
+		received atomic.Uint64
+	}
+
 	mu    sync.Mutex
 	idx   memindex.T
 	hists []*flathist.Histogram
@@ -34,30 +40,39 @@ func (h *HydratorSubmitter) Children() []Submitter {
 	return []Submitter{}
 }
 
+var hydratorSkipKinds = [...]bool{
+	value.KindTraceId:   true,
+	value.KindSpanId:    true,
+	value.KindTimestamp: true,
+	value.KindFloat:     true,
+	value.KindDuration:  true,
+}
+
 func (h *HydratorSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
 	h.live.Record(ev)
+	h.stats.received.Add(1)
 
 	hasHist := false
-
-	// TODO: building the metric key could have some protection against high cardinality fields.
 
 	buf := make([]byte, 0, 64)
 	for _, ann := range ev {
 		if ann.Value.Kind() == value.KindHistogram {
 			hasHist = true
 			continue
-		} else if ann.Value.Kind() == value.KindTraceId || ann.Value.Kind() == value.KindSpanId {
+		} else if hydratorSkipKinds[ann.Value.Kind()] {
 			continue
 		} else if strings.HasPrefix(ann.Key, "agg:") {
+			continue
+		} else if ann.Key == "_" {
 			continue
 		}
 
 		buf = append(buf, ann.Key...)
-		buf = append(buf, '=')
+		if ann.Value.Kind() != value.KindEmpty {
+			buf = append(buf, '=')
+		}
 
 		switch ann.Value.Kind() {
-		case value.KindEmpty:
-
 		case value.KindString:
 			x, _ := ann.Value.String()
 			buf = append(buf, x...)
@@ -65,9 +80,6 @@ func (h *HydratorSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
 		case value.KindBytes:
 			x, _ := ann.Value.Bytes()
 			buf = append(buf, hex.EncodeToString(x)...)
-
-		case value.KindHistogram, value.KindTraceId, value.KindSpanId:
-			// protected above
 
 		case value.KindInt:
 			x, _ := ann.Value.Int()
@@ -77,14 +89,6 @@ func (h *HydratorSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
 			x, _ := ann.Value.Uint()
 			buf = strconv.AppendUint(buf, x, 10)
 
-		case value.KindDuration:
-			x, _ := ann.Value.Duration()
-			buf = append(buf, x.String()...)
-
-		case value.KindFloat:
-			x, _ := ann.Value.Float()
-			buf = strconv.AppendFloat(buf, x, 'g', -1, 64)
-
 		case value.KindBool:
 			x, _ := ann.Value.Bool()
 			if x {
@@ -92,10 +96,6 @@ func (h *HydratorSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
 			} else {
 				buf = append(buf, "false"...)
 			}
-
-		case value.KindTimestamp:
-			x, _ := ann.Value.Timestamp()
-			buf = append(buf, x.String()...)
 		}
 
 		buf = append(buf, ',')
@@ -115,6 +115,8 @@ func (h *HydratorSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
 		into.Observe(1)
 		return
 	}
+
+	buf = append(buf, "_="...)
 
 	for _, ann := range ev {
 		x, ok := ann.Value.Histogram()
@@ -167,6 +169,15 @@ func (h *HydratorSubmitter) Handler() http.Handler {
 		"/tree":  constJSONHandler(treeify(h)),
 		"/live":  h.live.Handler(),
 		"/query": http.HandlerFunc(h.queryHandler),
+		"/stats": statsHandler(func() []stat {
+			h.mu.Lock()
+			metricsStored := uint64(len(h.hists))
+			h.mu.Unlock()
+			return []stat{
+				{"received", h.stats.received.Load()},
+				{"metrics_stored", metricsStored},
+			}
+		}),
 	}
 }
 

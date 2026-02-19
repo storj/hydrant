@@ -6,32 +6,33 @@ import (
 	"storj.io/hydrant"
 )
 
+var reserved = map[string]bool{
+	"file":      true,
+	"func":      true,
+	"line":      true,
+	"message":   true,
+	"timestamp": true,
+	"name":      true,
+	"start":     true,
+	"span_id":   true,
+	"parent_id": true,
+	"trace_id":  true,
+	"duration":  true,
+	"success":   true,
+	"_":         true,
+}
+
 type Store struct {
-	reserved    map[string]bool
 	annotations []hydrant.Annotation
 }
 
 func NewStore() *Store {
-	return &Store{
-		reserved: map[string]bool{
-			"file":      true,
-			"func":      true,
-			"line":      true,
-			"message":   true,
-			"timestamp": true,
-			"name":      true,
-			"start":     true,
-			"span_id":   true,
-			"parent_id": true,
-			"trace_id":  true,
-			"duration":  true,
-			"success":   true,
-		}}
+	return &Store{}
 }
 
 func (s *Store) MustRegisterAnnotation(a ...hydrant.Annotation) {
 	for i := range a {
-		if s.reserved[a[i].Key] {
+		if reserved[a[i].Key] {
 			panic(fmt.Sprintf("%q is reserved", a[i].Key))
 		}
 	}

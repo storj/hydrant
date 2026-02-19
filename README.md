@@ -25,8 +25,7 @@ if err != nil {
 hydrant.SetDefaultSubmitter(sub)
 go sub.Run(context.Background())
 
-http.Handle("/ui/", http.StripPrefix("/ui/", sub.Handler()))
-panic(http.ListenAndServe(":9912", nil))
+go panic(http.ListenAndServe(":9912", sub.Handler()))
 ```
 
 Instrument functions with spans:
@@ -49,7 +48,7 @@ func HandleRequest(ctx context.Context) (err error) {
 }
 ```
 
-Open `http://localhost:9912/ui/` to see the pipeline tree and query histogram
+Open `http://localhost:9912/` to see the pipeline tree and query histogram
 data. See [examples/basic](examples/basic/main.go) for a complete runnable
 version.
 
@@ -88,6 +87,10 @@ Runnable examples live in the [examples/](examples/) directory:
 
 - **[slog](examples/slog/main.go)** - Bridge Go's `log/slog` into hydrant.
   All slog output becomes hydrant events linked to the active span.
+
+- **[tracebuf](examples/tracebuf/main.go)** - Trace buffer submitter. Captures
+  recent traces in a ring buffer and displays them in the web UI with
+  collapsible span trees.
 
 - **[remoteconfig](examples/remoteconfig/main.go)** - Central configuration
   with `RemoteSubmitter`. A config server serves pipeline JSON over HTTP and
@@ -257,17 +260,18 @@ cheaply then walking them all. Useful for checking for task leaks.
 A **Submitter** receives events and does something with them. They compose
 into pipelines:
 
-| Submitter              | Purpose                                                |
-|------------------------|--------------------------------------------------------|
-| **MultiSubmitter**     | Fan-out to multiple destinations                       |
-| **FilterSubmitter**    | Conditional routing based on filter expressions        |
-| **GrouperSubmitter**   | Time-windowed aggregation with histogram merging       |
-| **HTTPSubmitter**      | Batch and send events to a remote collector over HTTP  |
-| **OTelSubmitter**      | Export events as OTLP protobuf to an OTel collector    |
-| **PrometheusSubmitter**| Expose grouped metrics as Prometheus /metrics endpoint |
-| **HydratorSubmitter**  | In-memory histogram storage with query API             |
-| **NullSubmitter**      | Discard events                                         |
-| **NamedSubmitter**     | Reference another submitter by name (enables reuse)    |
+| Submitter                | Purpose                                                 |
+|--------------------------|---------------------------------------------------------|
+| **MultiSubmitter**       | Fan-out to multiple destinations                        |
+| **FilterSubmitter**      | Conditional routing based on filter expressions         |
+| **GrouperSubmitter**     | Time-windowed aggregation with histogram merging        |
+| **HTTPSubmitter**        | Batch and send events to a remote collector over HTTP   |
+| **OTelSubmitter**        | Export events as OTLP protobuf to an OTel collector     |
+| **PrometheusSubmitter**  | Expose grouped metrics as Prometheus /metrics endpoint  |
+| **HydratorSubmitter**    | In-memory histogram storage with query API              |
+| **TraceBufferSubmitter** | Ring buffer of recent traces for browsing in the web UI |
+| **NullSubmitter**        | Discard events                                          |
+| **NamedSubmitter**       | Reference another submitter by name (enables reuse)     |
 
 ### Grouper and Histograms
 
@@ -361,16 +365,39 @@ not(eq(key(name), health_check))
 The filter environment is extensible. Register custom functions with
 `env.SetFunction(name, fn)`.
 
+## Trace Buffer
+
+The `TraceBufferSubmitter` keeps a ring buffer of recent traces (default 64)
+for browsing in the web UI. Spans are grouped by trace_id and displayed as
+collapsible trees. A trace is marked "done" when its root span completes.
+
+```json
+{
+    "kind": "trace_buffer",
+    "buffer_size": 128
+}
+```
+
+Use it standalone or alongside other submitters via a `MultiSubmitter`.
+See [examples/tracebuf](examples/tracebuf/main.go) for a runnable demo.
+
 ## Web UI
 
 The built-in web UI (served by `sub.Handler()`) provides:
 
 - **Names view** - browse all named submitters
 - **Tree view** - visualize the full pipeline hierarchy
+- **Config view** - inspect the current pipeline configuration as JSON
+- **Live view** - real-time event stream for any submitter with filtering,
+  auto-scroll, and event rate display
+- **Stats view** - per-submitter counters (received, passed, filtered, etc.)
+  with auto-refresh
 - **Histogram query** - filter and query metrics stored in HydratorSubmitters
   with configurable quantile resolution and linear/exponential spacing
 - **Distribution charts** - SVG quantile visualization with linear and log
   scale modes
+- **Trace browser** - browse recent traces captured by TraceBufferSubmitters,
+  expand to see individual spans with timing and annotations
 
 ## Architecture
 
@@ -401,10 +428,10 @@ The built-in web UI (served by `sub.Handler()`) provides:
   │   │  │  │  ┌─ MultiSubmitter ───────────┐   │  │  │        │
   │   │  │  │  │                            │   │  │  │        │
   │   │  │  │  │  ┌─ HTTPSubmitter ──────┐  │   │  │  │        │
-  │   │  │  │  │  │  → collector:9090    │  │   │  │  │        │
+  │   │  │  │  │  │  → collector:9090   │  │   │  │  │        │
   │   │  │  │  │  └──────────────────────┘  │   │  │  │        │
   │   │  │  │  │  ┌─ OTelSubmitter ──────┐  │   │  │  │        │
-  │   │  │  │  │  │  → jaeger:4318       │  │   │  │  │        │
+  │   │  │  │  │  │  → jaeger:4318      │  │   │  │  │        │
   │   │  │  │  │  └──────────────────────┘  │   │  │  │        │
   │   │  │  │  │  ┌─ HydratorSubmitter ──┐  │   │  │  │        │
   │   │  │  │  │  │  (in-memory query)   │  │   │  │  │        │
@@ -415,7 +442,7 @@ The built-in web UI (served by `sub.Handler()`) provides:
   │   └───────────────────────────────────────────────┘        │
   └────────────────────────────────────────────────────────────┘
            │               │                    │
-           ▼               ▼                    ▼
+           ▼              ▼                   ▼
    Remote Collector   OTel/Jaeger          Web UI &
    (zstd/HTTP)        (OTLP/HTTP)         Histogram Query
 

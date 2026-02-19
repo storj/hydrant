@@ -197,6 +197,33 @@ function renderNames(names) {
     });
 }
 
+// Show config in main content
+async function showConfig() {
+    closeLiveStream();
+    const mainContent = document.getElementById('main-content');
+    mainContent.innerHTML = `
+        <div style="margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #dee2e6;">
+            <h2 style="margin: 0 0 5px 0; color: #333;">Configuration</h2>
+        </div>
+        <div id="configLoading" class="loading">Loading...</div>
+        <div id="configError" class="error" style="display: none;"></div>
+        <pre id="configContent" style="flex: 1; margin: 0; padding: 10px; font-size: 13px; overflow: auto; background: #f8f9fa; border-radius: 4px; white-space: pre-wrap; word-break: break-word;"></pre>
+    `;
+
+    try {
+        const response = await fetch('/config');
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const config = await response.json();
+        hideLoading('configLoading');
+        document.getElementById('configContent').textContent = JSON.stringify(config, null, '\t');
+    } catch (error) {
+        hideLoading('configLoading');
+        showError('configError', `Failed to load config: ${error.message}`);
+    }
+}
+
 // Navigate to a specific submitter
 function navigateToSubmitter(path, kind) {
     // Store the kind so handleHashChange can use it
@@ -994,6 +1021,13 @@ async function handleHashChange() {
         closeLiveStream();
         document.getElementById('main-content').innerHTML = '<div class="empty-state">Select a submitter from the left to view details</div>';
         currentPath = null;
+        return;
+    }
+
+    // Config page
+    if (hash === '/config') {
+        currentPath = hash;
+        showConfig();
         return;
     }
 

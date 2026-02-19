@@ -203,6 +203,18 @@ h1 {
     text-decoration: underline;
 }
 
+/* Config Link */
+.config-link {
+    font-size: 14px;
+    color: #007bff;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.config-link:hover {
+    text-decoration: underline;
+}
+
 /* Empty State */
 .empty-state {
     text-align: center;

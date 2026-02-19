@@ -157,9 +157,6 @@ func observableValue(v value.Value) (float32, bool) {
 	case value.KindDuration:
 		x, _ := v.Duration()
 		return float32(x.Seconds()), true
-	case value.KindTimestamp:
-		x, _ := v.Timestamp()
-		return float32(x.Unix()), true
 	case value.KindFloat:
 		x, _ := v.Float()
 		return float32(x), true

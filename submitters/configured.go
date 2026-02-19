@@ -97,9 +97,10 @@ func (s *ConfiguredSubmitter) Handler() http.Handler {
 		// to do double wildcard merging because we return an http.Handler from this method.
 		"*": http.FileServerFS(func() fs.FS { sub, _ := fs.Sub(static, "static"); return sub }()),
 
-		"/tree":  constJSONHandler(treeify(s)),
-		"/sub":   s.root.Handler(),
-		"/names": constJSONHandler(names),
-		"/name":  subs,
+		"/tree":   constJSONHandler(treeify(s)),
+		"/config": constJSONHandler(s.cfg),
+		"/sub":    s.root.Handler(),
+		"/names":  constJSONHandler(names),
+		"/name":   subs,
 	}
 }

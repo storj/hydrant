@@ -144,8 +144,16 @@ func (h *HydratorSubmitter) Query(q []byte, cb func(name []byte, hist *flathist.
 	if err := query.Parse(q, &qu); err != nil {
 		return err
 	}
-	memindex.Iter(qu.Eval(&h.idx), func(id memindex.Id) bool {
+
+	h.mu.Lock()
+	bm := qu.Eval(&h.idx)
+	h.mu.Unlock()
+
+	memindex.Iter(bm, func(id memindex.Id) bool {
+		h.mu.Lock()
 		name, ok := h.idx.AppendNameById(id, nil)
+		h.mu.Unlock()
+
 		if !ok {
 			return false
 		}

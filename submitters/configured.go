@@ -88,10 +88,17 @@ var static embed.FS
 
 func (s *ConfiguredSubmitter) Handler() http.Handler {
 	subs := hmux.Dir{}
-	names := make(map[string]string)
+	type nameInfo struct {
+		Kind  string `json:"kind"`
+		Extra any    `json:"extra"`
+	}
+	names := make(map[string]nameInfo)
 	for name, sub := range s.named {
 		subs["/"+name] = sub.Handler()
-		names[name] = reflect.TypeOf(sub.sub).Elem().Name()
+		names[name] = nameInfo{
+			Kind:  reflect.TypeOf(sub.sub).Elem().Name(),
+			Extra: sub.sub.ExtraData(),
+		}
 	}
 
 	return hmux.Dir{

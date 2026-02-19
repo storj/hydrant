@@ -544,6 +544,18 @@ h1 {
     background: #dc3545;
 }
 
+.waterfall-bar-dimmed {
+    opacity: 0.15;
+}
+
+.waterfall-bar-clipped-left {
+    border-left: 3px dashed rgba(255, 255, 255, 0.5);
+}
+
+.waterfall-bar-clipped-right {
+    border-right: 3px dashed rgba(255, 255, 255, 0.5);
+}
+
 .waterfall-bar-label {
     padding: 0 4px;
     font-size: 11px;
@@ -605,7 +617,6 @@ h1 {
     padding: 2px 8px;
     border: 1px solid #4a9eff;
     border-radius: 3px;
-    margin-left: auto;
 }
 
 .trace-view-btn:hover {

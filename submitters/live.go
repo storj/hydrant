@@ -60,29 +60,3 @@ func (l *liveBuffer) handleWatch(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 	})
 }
-
-type jsonEvent []jsonAnnotation
-
-type jsonAnnotation struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
-}
-
-func serializeEvents(events []hydrant.Event) []jsonEvent {
-	out := make([]jsonEvent, len(events))
-	for i, ev := range events {
-		out[i] = serializeEvent(ev)
-	}
-	return out
-}
-
-func serializeEvent(ev hydrant.Event) jsonEvent {
-	out := make(jsonEvent, len(ev))
-	for i, a := range ev {
-		out[i] = jsonAnnotation{
-			Key:   a.Key,
-			Value: a.String()[len(a.Key)+1:], // strip "key=" prefix from String()
-		}
-	}
-	return out
-}

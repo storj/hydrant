@@ -67,7 +67,9 @@ func (h *HTTPSubmitter) Children() []Submitter {
 	return []Submitter{}
 }
 
-func (h *HTTPSubmitter) ExtraData() any { return nil }
+func (h *HTTPSubmitter) ExtraData() any {
+	return map[string]string{"endpoint": h.url}
+}
 
 func (h *HTTPSubmitter) Run(ctx context.Context) {
 	nextTick := time.After(utils.Jitter(h.interval))

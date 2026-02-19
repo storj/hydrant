@@ -185,7 +185,12 @@ function renderNames(names) {
     const sortedNames = Object.keys(names).sort();
 
     sortedNames.forEach(name => {
-        const kind = names[name];
+        const info = names[name];
+        const kind = info.kind;
+        const path = `/name/${name}`;
+        if (info.extra) {
+            knownExtras[path] = info.extra;
+        }
         const itemDiv = document.createElement('div');
         itemDiv.className = 'name-item';
 
@@ -194,7 +199,7 @@ function renderNames(names) {
         nameLink.textContent = name;
         nameLink.title = `${kind} - Click to navigate`;
         nameLink.addEventListener('click', () => {
-            navigateToSubmitter(`/name/${name}`, kind);
+            navigateToSubmitter(path, kind);
         });
 
         itemDiv.appendChild(nameLink);
@@ -310,7 +315,6 @@ function renderHydratorInterface(container, basePath) {
     container.innerHTML = `
         <div style="margin-bottom: 0; padding-bottom: 15px; border-bottom: 2px solid #dee2e6;">
             <h2 style="margin: 0 0 5px 0; color: #333;">HydratorSubmitter</h2>
-            <div style="color: #6c757d; font-size: 14px; margin-bottom: 10px;">Path: ${basePath}</div>
             <div class="tabs" id="hydratorTabs" style="margin-bottom: 0; border-bottom: none;">
                 <button class="tab-button active" data-htab="query">Query</button>
                 <button class="tab-button" data-htab="live">Live</button>
@@ -960,11 +964,19 @@ function createQuantilesSVG(quantiles, useLogScale) {
 }
 
 // Render tabbed interface (Live / Stats) for non-hydrator submitters
+function renderExtraLines(path) {
+    const extra = knownExtras[path] || {};
+    return Object.entries(extra)
+        .filter(([, v]) => v)
+        .map(([k, v]) => `<div style="color: #6c757d; font-size: 14px; margin-bottom: 10px;">${escapeHtml(k)}: <code>${escapeHtml(v)}</code></div>`)
+        .join('');
+}
+
 function renderLiveInterface(container, path, kind) {
     container.innerHTML = `
         <div style="margin-bottom: 0; padding-bottom: 15px; border-bottom: 2px solid #dee2e6;">
             <h2 style="margin: 0 0 5px 0; color: #333;">${kind}</h2>
-            <div style="color: #6c757d; font-size: 14px; margin-bottom: 10px;">Path: ${path}</div>
+            ${renderExtraLines(path)}
             <div class="tabs" id="submitterTabs" style="margin-bottom: 0; border-bottom: none;">
                 <button class="tab-button active" data-stab="live">Live</button>
                 <button class="tab-button" data-stab="stats">Stats</button>
@@ -1140,16 +1152,14 @@ function classifyEvent(ev) {
     return { type: 'other', map };
 }
 
-// Format a timestamp value as HH:MM:SS.mmm
+// Format a nanosecond timestamp string as HH:MM:SS.mmm
 function formatTimestamp(ts) {
     if (!ts) return '';
-    // Try parsing as a date string or unix timestamp
-    const d = new Date(ts);
+    const d = new Date(Number(BigInt(ts) / 1000000n));
     if (!isNaN(d.getTime())) {
         return d.toTimeString().slice(0, 8) + '.' + String(d.getMilliseconds()).padStart(3, '0');
     }
-    // If it's already formatted, return as-is but truncate
-    return ts.length > 12 ? ts.slice(0, 12) : ts;
+    return ts;
 }
 
 // Build summary text for an event
@@ -1235,13 +1245,10 @@ function appendLiveEvent(container, ev, filterText) {
 
 // Render TraceBuffer interface with Traces / Live / Stats tabs
 function renderTraceBufferInterface(container, basePath) {
-    const extra = knownExtras[basePath] || {};
-    const filterText = extra.filter || '';
     container.innerHTML = `
         <div style="margin-bottom: 0; padding-bottom: 15px; border-bottom: 2px solid #dee2e6;">
             <h2 style="margin: 0 0 5px 0; color: #333;">TraceBufferSubmitter</h2>
-            <div style="color: #6c757d; font-size: 14px; margin-bottom: 10px;">Path: ${basePath}</div>
-            ${filterText ? `<div style="color: #6c757d; font-size: 14px; margin-bottom: 10px;">Filter: <code>${filterText}</code></div>` : ''}
+            ${renderExtraLines(basePath)}
             <div class="tabs" id="tracebufTabs" style="margin-bottom: 0; border-bottom: none;">
                 <button class="tab-button active" data-tbtab="traces">Traces</button>
                 <button class="tab-button" data-tbtab="live">Live</button>
@@ -1348,11 +1355,11 @@ async function fetchAndRenderTraces(container, basePath) {
             const traceIdShort = trace.trace_id.slice(0, 16);
 
             header.innerHTML = `
+                <span class="trace-view-btn">View</span>
                 <span class="trace-id">${escapeHtml(traceIdShort)}</span>
                 <span class="trace-root-name">${escapeHtml(rootName)}</span>
                 <span class="trace-span-count">${trace.spans.length} span${trace.spans.length !== 1 ? 's' : ''}</span>
                 <span class="trace-duration">${escapeHtml(rootDuration)}</span>
-                <span class="trace-view-btn">View</span>
             `;
 
             // View button opens waterfall
@@ -1376,7 +1383,9 @@ async function fetchAndRenderTraces(container, basePath) {
                 const aStart = a.find(x => x.key === 'start');
                 const bStart = b.find(x => x.key === 'start');
                 if (!aStart || !bStart) return 0;
-                return aStart.value < bStart.value ? -1 : aStart.value > bStart.value ? 1 : 0;
+                const av = BigInt(aStart.value || '0');
+                const bv = BigInt(bStart.value || '0');
+                return av < bv ? -1 : av > bv ? 1 : 0;
             });
 
             for (const span of sortedSpans) {
@@ -1425,68 +1434,94 @@ async function fetchAndRenderTraces(container, basePath) {
 }
 
 // Pack parsed spans into swim lanes using greedy algorithm.
-// Input: array of {name, startMs, durationMs, success, annotations}
+// Input: array of {name, start, duration, success, annotations}
 // Output: array of lanes, each lane is array of {span, leftPct, widthPct}
-function packSpansIntoLanes(spans, traceStartMs, traceDurationMs) {
-    // Root span first, then by duration descending, then by start time
-    const sorted = spans.slice().sort((a, b) => {
-        if (a.isRoot !== b.isRoot) return a.isRoot ? -1 : 1;
-        return b.durationMs - a.durationMs || a.startMs - b.startMs;
+function packSpansIntoLanes(spans, traceStart, traceDuration) {
+    const minWidthPct = 5;
+    const minDuration = traceDuration > 0 ? (minWidthPct / 100) * traceDuration : 0;
+
+    // Compute visual duration for each span.
+    const visualDurations = spans.map(s => Math.max(s.duration, minDuration));
+    // visualTotal is just traceDuration — spans extending beyond the view
+    // get clamped at the edges during rendering.
+    const visualTotal = traceDuration;
+
+    // Root span first, then by start time, then by duration descending
+    const indices = spans.map((_, i) => i);
+    indices.sort((a, b) => {
+        if (spans[a].isRoot !== spans[b].isRoot) return spans[a].isRoot ? -1 : 1;
+        return spans[a].start - spans[b].start || spans[b].duration - spans[a].duration;
     });
 
-    // Each lane tracks sorted intervals so we can check gaps, not just the tail.
-    const lanes = []; // each entry: {intervals: [{startMs, endMs}], items: [...]}
+    // Each lane tracks sorted intervals based on visual size (with min width applied).
+    const lanes = []; // each entry: {intervals: [{start, end}], items: [...]}
 
-    function fitsInLane(lane, startMs, endMs) {
+    function fitsInLane(lane, start, end) {
         for (const iv of lane.intervals) {
-            if (startMs < iv.endMs && endMs > iv.startMs) return false;
+            if (start < iv.end && end > iv.start) return false;
         }
         return true;
     }
 
-    function insertInterval(lane, startMs, endMs) {
-        // Insert keeping sorted order by startMs
+    function insertInterval(lane, start, end) {
+        // Insert keeping sorted order by start
         let i = 0;
-        while (i < lane.intervals.length && lane.intervals[i].startMs < startMs) i++;
-        lane.intervals.splice(i, 0, { startMs, endMs });
+        while (i < lane.intervals.length && lane.intervals[i].start < start) i++;
+        lane.intervals.splice(i, 0, { start, end });
     }
 
-    for (const span of sorted) {
-        const spanEnd = span.startMs + span.durationMs;
-        const leftPct = traceDurationMs > 0 ? ((span.startMs - traceStartMs) / traceDurationMs) * 100 : 0;
-        const widthPct = traceDurationMs > 0 ? (span.durationMs / traceDurationMs) * 100 : 100;
+    const viewEnd = traceStart + traceDuration;
+
+    for (const idx of indices) {
+        const span = spans[idx];
+        const visualDur = visualDurations[idx];
+        const expanded = visualDur > span.duration;
+        let visualStart = span.start;
+        let visualEnd = span.start + visualDur;
+
+        // If min-width expansion pushes past the view end, shift left
+        // to keep the full width visible (mirrors the rendering clamp).
+        // Only shift spans whose actual start is within the view — don't
+        // pull far-away spans into the visible area.
+        if (expanded && visualEnd > viewEnd && span.start < viewEnd) {
+            visualStart = Math.max(traceStart, viewEnd - visualDur);
+            visualEnd = visualStart + visualDur;
+        }
+
+        const leftPct = visualTotal > 0 ? ((visualStart - traceStart) / visualTotal) * 100 : 0;
+        const widthPct = visualTotal > 0 ? (visualDur / visualTotal) * 100 : 100;
 
         let placed = false;
         for (const lane of lanes) {
-            if (fitsInLane(lane, span.startMs, spanEnd)) {
-                lane.items.push({ span, leftPct, widthPct });
-                insertInterval(lane, span.startMs, spanEnd);
+            if (fitsInLane(lane, visualStart, visualEnd)) {
+                lane.items.push({ span, leftPct, widthPct, expanded });
+                insertInterval(lane, visualStart, visualEnd);
                 placed = true;
                 break;
             }
         }
         if (!placed) {
             lanes.push({
-                intervals: [{ startMs: span.startMs, endMs: spanEnd }],
-                items: [{ span, leftPct, widthPct }],
+                intervals: [{ start: span.start, end: visualEnd }],
+                items: [{ span, leftPct, widthPct, expanded }],
             });
         }
     }
-    return lanes;
+    return { lanes, visualTotal };
 }
 
-// Format milliseconds as a human-readable duration string.
-function formatDurationMs(ms) {
-    if (ms >= 60000) return (ms / 60000).toFixed(1) + 'm';
-    if (ms >= 1000) return (ms / 1000).toFixed(1) + 's';
-    if (ms >= 1) return ms.toFixed(1) + 'ms';
-    if (ms >= 0.001) return (ms * 1000).toFixed(0) + 'µs';
-    return ms.toFixed(3) + 'ms';
+// Format nanoseconds as a human-readable duration string.
+function formatDuration(ns) {
+    if (ns >= 60e9) return (ns / 60e9).toFixed(1) + 'm';
+    if (ns >= 1e9) return (ns / 1e9).toFixed(1) + 's';
+    if (ns >= 1e6) return (ns / 1e6).toFixed(1) + 'ms';
+    if (ns >= 1e3) return (ns / 1e3).toFixed(0) + 'µs';
+    return ns.toFixed(0) + 'ns';
 }
 
 // Render a waterfall view for a single trace.
 function renderTraceWaterfall(container, trace, basePath) {
-    // Parse spans
+    // Parse spans once
     const parsed = [];
     let rootName = '';
     for (const span of trace.spans) {
@@ -1496,15 +1531,12 @@ function renderTraceWaterfall(container, trace, basePath) {
             map[a.key] = a.value;
             annotations.push(a);
         }
-        if (!map['duration']) continue; // skip non-span events (logs)
-
-        const startMs = map['start'] ? new Date(map['start']).getTime() : 0;
-        const endMs = map['timestamp'] ? new Date(map['timestamp']).getTime() : 0;
-        const durationMs = endMs - startMs;
+        const start = Number(BigInt(map['start'] || '0'));
+        const end = Number(BigInt(map['timestamp'] || '0'));
+        const duration = end - start;
         const success = map['success'] === 'true';
         const name = map['name'] || '';
 
-        // Detect root span
         const isRoot = !!(map['span_id'] && map['span_id'] === map['parent_id']);
         if (isRoot) {
             rootName = name;
@@ -1512,7 +1544,7 @@ function renderTraceWaterfall(container, trace, basePath) {
 
         const spanId = map['span_id'] || '';
         const parentId = map['parent_id'] || '';
-        parsed.push({ name, startMs, durationMs, success, isRoot, spanId, parentId, annotations, map });
+        parsed.push({ name, start, duration, success, isRoot, spanId, parentId, annotations, map });
     }
 
     if (parsed.length === 0) {
@@ -1520,13 +1552,23 @@ function renderTraceWaterfall(container, trace, basePath) {
         return;
     }
 
-    // Compute trace time bounds
-    const traceStartMs = Math.min(...parsed.map(s => s.startMs));
-    const traceEndMs = Math.max(...parsed.map(s => s.startMs + s.durationMs));
-    const traceDurationMs = traceEndMs - traceStartMs;
+    renderWaterfallView(container, parsed, rootName, trace.trace_id, basePath, null);
+}
+
+function renderWaterfallView(container, allSpans, rootName, traceId, basePath, zoomSpan) {
+    // Determine time bounds
+    let viewStart, viewDuration;
+    if (zoomSpan) {
+        viewStart = zoomSpan.start;
+        viewDuration = zoomSpan.duration;
+    } else {
+        viewStart = Math.min(...allSpans.map(s => s.start));
+        const viewEnd = Math.max(...allSpans.map(s => s.start + s.duration));
+        viewDuration = viewEnd - viewStart;
+    }
 
     // Pack into lanes
-    const lanes = packSpansIntoLanes(parsed, traceStartMs, traceDurationMs);
+    const { lanes, visualTotal } = packSpansIntoLanes(allSpans, viewStart, viewDuration);
 
     // Build UI
     container.innerHTML = '';
@@ -1541,17 +1583,36 @@ function renderTraceWaterfall(container, trace, basePath) {
     backBtn.addEventListener('click', () => fetchAndRenderTraces(container, basePath));
     header.appendChild(backBtn);
 
+    if (zoomSpan) {
+        const resetBtn = document.createElement('button');
+        resetBtn.className = 'back-btn';
+        resetBtn.textContent = 'Reset zoom';
+        resetBtn.addEventListener('click', () => renderWaterfallView(container, allSpans, rootName, traceId, basePath, null));
+        header.appendChild(resetBtn);
+    }
+
     const title = document.createElement('span');
     title.className = 'waterfall-title';
-    title.textContent = (rootName || 'Trace') + '  ' + trace.trace_id;
+    title.textContent = (rootName || 'Trace') + '  ' + traceId;
     header.appendChild(title);
 
     const dur = document.createElement('span');
     dur.className = 'waterfall-duration';
-    dur.textContent = formatDurationMs(traceDurationMs);
+    dur.textContent = formatDuration(viewDuration);
     header.appendChild(dur);
 
     container.appendChild(header);
+
+    // Highlight filter
+    const filterInput = document.createElement('input');
+    filterInput.type = 'text';
+    filterInput.className = 'live-filter';
+    filterInput.placeholder = 'Highlight spans...';
+    filterInput.style.marginBottom = '10px';
+    filterInput.style.flexShrink = '0';
+    container.appendChild(filterInput);
+
+    const allBars = []; // {bar, searchText, span, finalLeft, finalWidth}
 
     // Waterfall body
     const wfContainer = document.createElement('div');
@@ -1563,14 +1624,16 @@ function renderTraceWaterfall(container, trace, basePath) {
     const tickCount = 5;
     for (let i = 0; i <= tickCount; i++) {
         const tick = document.createElement('span');
-        tick.textContent = formatDurationMs((traceDurationMs * i) / tickCount);
+        tick.textContent = formatDuration((visualTotal * i) / tickCount);
         timeline.appendChild(tick);
     }
     wfContainer.appendChild(timeline);
 
-    // Tooltip (shared)
-    let tooltip = container.querySelector('.waterfall-tooltip');
-    if (!tooltip) {
+    // Tooltip (shared, lives on document.body)
+    let tooltip = document.querySelector('.waterfall-tooltip');
+    if (tooltip) {
+        tooltip.style.display = 'none';
+    } else {
         tooltip = document.createElement('div');
         tooltip.className = 'waterfall-tooltip';
         document.body.appendChild(tooltip);
@@ -1584,11 +1647,31 @@ function renderTraceWaterfall(container, trace, basePath) {
         const laneDiv = document.createElement('div');
         laneDiv.className = 'waterfall-lane';
 
-        for (const { span, leftPct, widthPct } of lane.items) {
+        for (const { span, leftPct, widthPct, expanded } of lane.items) {
+            // Clamp to visible range
+            const clippedLeft = leftPct < 0;
+            const clippedRight = leftPct + widthPct > 100;
+            let finalLeft = Math.max(leftPct, 0);
+            let finalWidth = Math.min(leftPct + widthPct, 100) - finalLeft;
+            if (finalWidth <= 0) continue; // entirely off-screen
+
+            // If min-width expansion pushed past 100%, shift left to keep full width
+            if (expanded && clippedRight) {
+                finalLeft = Math.max(100 - widthPct, 0);
+                finalWidth = Math.min(widthPct, 100);
+            }
+
+            // Snap to 0.1% grid so nearly-identical min-width bars align
+            // and containment checks work for click-to-zoom.
+            finalLeft = Math.round(finalLeft * 10) / 10;
+            finalWidth = Math.round(finalWidth * 10) / 10;
+
             const bar = document.createElement('div');
             bar.className = 'waterfall-bar ' + (span.success ? 'waterfall-bar-success' : 'waterfall-bar-error');
-            bar.style.left = leftPct + '%';
-            bar.style.width = Math.max(widthPct, 0.3) + '%';
+            if (clippedLeft) bar.classList.add('waterfall-bar-clipped-left');
+            if (clippedRight && !expanded) bar.classList.add('waterfall-bar-clipped-right');
+            bar.style.left = finalLeft + '%';
+            bar.style.width = finalWidth + '%';
 
             if (span.spanId) barBySpanId[span.spanId] = bar;
 
@@ -1603,10 +1686,10 @@ function renderTraceWaterfall(container, trace, basePath) {
                 if (parentBar && parentBar !== bar) {
                     parentBar.classList.add('waterfall-bar-parent');
                 }
-                const offsetMs = span.startMs - traceStartMs;
+                const offset = span.start - viewStart;
                 let html = `<div class="tt-name">${escapeHtml(span.name)}</div>`;
-                html += `<div class="tt-row"><span class="tt-label">Duration:</span> ${formatDurationMs(span.durationMs)}</div>`;
-                html += `<div class="tt-row"><span class="tt-label">Offset:</span> +${formatDurationMs(offsetMs)}</div>`;
+                html += `<div class="tt-row"><span class="tt-label">Duration:</span> ${escapeHtml(span.map['duration'] || formatDuration(span.duration))}</div>`;
+                html += `<div class="tt-row"><span class="tt-label">Offset:</span> +${formatDuration(offset)}</div>`;
                 html += `<div class="tt-row"><span class="tt-label">Status:</span> <span class="${span.success ? 'tt-success' : 'tt-error'}">${span.success ? 'success' : 'error'}</span></div>`;
 
                 // Show user annotations (skip system fields)
@@ -1622,7 +1705,12 @@ function renderTraceWaterfall(container, trace, basePath) {
             });
 
             bar.addEventListener('mousemove', (e) => {
-                tooltip.style.left = (e.clientX + 12) + 'px';
+                let left = e.clientX + 12;
+                const tipWidth = tooltip.offsetWidth || 200;
+                if (left + tipWidth > window.innerWidth - 8) {
+                    left = e.clientX - tipWidth - 12;
+                }
+                tooltip.style.left = left + 'px';
                 tooltip.style.top = (e.clientY + 12) + 'px';
             });
 
@@ -1634,6 +1722,43 @@ function renderTraceWaterfall(container, trace, basePath) {
                 }
             });
 
+            // Click to zoom: find all spans visually contained within this
+            // bar's display bounds and zoom to their actual time range.
+            // If the bar is clipped (extends beyond the view), zoom to the
+            // span's actual time range instead of doing containment matching.
+            bar.addEventListener('click', (e) => {
+                e.stopPropagation();
+                tooltip.style.display = 'none';
+
+                let minStart, maxEnd;
+                if (e.shiftKey || clippedLeft || clippedRight) {
+                    minStart = span.start;
+                    maxEnd = span.start + span.duration;
+                } else {
+                    const clickLeft = finalLeft;
+                    const clickRight = finalLeft + finalWidth;
+                    minStart = Infinity;
+                    maxEnd = -Infinity;
+                    for (const entry of allBars) {
+                        const eRight = entry.finalLeft + entry.finalWidth;
+                        if (entry.finalLeft >= clickLeft - 0.1 && eRight <= clickRight + 0.1) {
+                            minStart = Math.min(minStart, entry.span.start);
+                            maxEnd = Math.max(maxEnd, entry.span.start + entry.span.duration);
+                        }
+                    }
+                    if (minStart >= maxEnd) {
+                        minStart = span.start;
+                        maxEnd = span.start + span.duration;
+                    }
+                }
+                const syntheticZoom = { start: minStart, duration: maxEnd - minStart };
+                renderWaterfallView(container, allSpans, rootName, traceId, basePath, syntheticZoom);
+            });
+
+            // Build search text from all annotations
+            const searchText = span.annotations.map(a => a.key + '=' + a.value).join(' ').toLowerCase();
+            allBars.push({ bar, searchText, span, finalLeft, finalWidth });
+
             laneDiv.appendChild(bar);
         }
 
@@ -1641,6 +1766,14 @@ function renderTraceWaterfall(container, trace, basePath) {
     }
 
     container.appendChild(wfContainer);
+
+    // Highlight filter handler
+    filterInput.addEventListener('input', () => {
+        const q = filterInput.value.toLowerCase();
+        for (const { bar, searchText } of allBars) {
+            bar.classList.toggle('waterfall-bar-dimmed', q !== '' && !searchText.includes(q));
+        }
+    });
 }
 
 function escapeHtml(s) {

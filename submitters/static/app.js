@@ -1011,24 +1011,67 @@ async function startLiveView(container, basePath) {
     liveAutoScroll = true;
 
     container.innerHTML = `
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-shrink: 0;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-shrink: 0;">
             <span style="font-weight: 500; color: #555;">Live Events</span>
-            <label style="display: flex; align-items: center; gap: 5px; font-size: 13px; cursor: pointer;">
-                <input type="checkbox" id="liveAutoScroll" checked />
-                <span>Auto-scroll</span>
-            </label>
         </div>
-        <div id="liveEvents" style="flex: 1; overflow-y: auto; font-family: monospace; font-size: 13px; background: #1e1e1e; color: #d4d4d4; border-radius: 4px; padding: 10px;"></div>
+        <div style="flex-shrink: 0; margin-bottom: 8px;">
+            <input type="text" id="liveFilter" class="live-filter" placeholder="Filter events..." />
+        </div>
+        <div id="liveEventsWrap" style="flex: 1; position: relative; overflow: hidden; border-radius: 4px;">
+            <div id="liveEvents" style="height: 100%; overflow-y: auto; font-family: monospace; font-size: 13px; background: #1e1e1e; color: #d4d4d4; padding: 4px;"></div>
+            <button id="resumeScroll" class="resume-scroll-btn" style="display: none;">Resume auto-scroll</button>
+        </div>
         <div id="liveStatus" style="flex-shrink: 0; padding: 5px 0; font-size: 12px; color: #6c757d;"></div>
     `;
 
     const eventsDiv = document.getElementById('liveEvents');
     const statusDiv = document.getElementById('liveStatus');
+    const filterInput = document.getElementById('liveFilter');
+    const resumeBtn = document.getElementById('resumeScroll');
 
-    document.getElementById('liveAutoScroll').addEventListener('change', (e) => {
-        liveAutoScroll = e.target.checked;
-        if (liveAutoScroll) {
-            eventsDiv.scrollTop = eventsDiv.scrollHeight;
+    let filterText = '';
+    let totalCount = 0;
+    let rateTimestamps = []; // timestamps of recent events for rate calc
+
+    function updateStatus(extra) {
+        // Calculate rate: events in the last 5 seconds
+        const now = Date.now();
+        rateTimestamps = rateTimestamps.filter(t => now - t < 5000);
+        const rate = Math.round(rateTimestamps.length / 5);
+        const countStr = totalCount.toLocaleString();
+        const rateStr = rate > 0 ? `, ~${rate}/s` : '';
+        statusDiv.textContent = extra || `Streaming... (${countStr} events${rateStr})`;
+    }
+
+    // Detect user scrolling away from the bottom to pause auto-scroll
+    let scrollIgnore = false;
+    eventsDiv.addEventListener('scroll', () => {
+        if (scrollIgnore) return;
+        const atBottom = eventsDiv.scrollHeight - eventsDiv.scrollTop - eventsDiv.clientHeight < 40;
+        if (atBottom && !liveAutoScroll) {
+            liveAutoScroll = true;
+            resumeBtn.style.display = 'none';
+        } else if (!atBottom && liveAutoScroll) {
+            liveAutoScroll = false;
+            resumeBtn.style.display = '';
+        }
+    });
+
+    resumeBtn.addEventListener('click', () => {
+        liveAutoScroll = true;
+        resumeBtn.style.display = 'none';
+        eventsDiv.scrollTop = eventsDiv.scrollHeight;
+    });
+
+    // Filter handler
+    filterInput.addEventListener('input', () => {
+        filterText = filterInput.value.toLowerCase();
+        for (const child of eventsDiv.children) {
+            if (!filterText || child.dataset.search.includes(filterText)) {
+                child.style.display = '';
+            } else {
+                child.style.display = 'none';
+            }
         }
     });
 
@@ -1039,27 +1082,28 @@ async function startLiveView(container, basePath) {
             const events = await resp.json();
             if (events && events.length > 0) {
                 for (const ev of events) {
-                    appendLiveEvent(eventsDiv, ev);
+                    appendLiveEvent(eventsDiv, ev, filterText);
+                    totalCount++;
                 }
-                statusDiv.textContent = `Loaded ${events.length} recent events. Streaming...`;
+                updateStatus(`Loaded ${events.length} recent events. Streaming...`);
             } else {
-                statusDiv.textContent = 'Waiting for events...';
+                updateStatus('Waiting for events...');
             }
         }
     } catch (e) {
-        statusDiv.textContent = 'Failed to load initial events.';
+        updateStatus('Failed to load initial events.');
     }
 
     // Open SSE stream
     liveEventSource = new EventSource(`${basePath}/live?watch=1`);
-    let count = 0;
 
     liveEventSource.onmessage = (e) => {
         try {
             const ev = JSON.parse(e.data);
-            appendLiveEvent(eventsDiv, ev);
-            count++;
-            statusDiv.textContent = `Streaming... (${count} new)`;
+            appendLiveEvent(eventsDiv, ev, filterText);
+            totalCount++;
+            rateTimestamps.push(Date.now());
+            updateStatus();
 
             // Cap displayed events to prevent memory issues
             while (eventsDiv.children.length > 2000) {
@@ -1071,21 +1115,111 @@ async function startLiveView(container, basePath) {
     };
 
     liveEventSource.onerror = () => {
-        statusDiv.textContent = 'Connection lost. Reconnecting...';
+        updateStatus('Connection lost. Reconnecting...');
     };
 }
 
+// Classify an event based on its annotations
+function classifyEvent(ev) {
+    const map = {};
+    for (const ann of ev) {
+        map[ann.key] = ann.value;
+    }
+    if ('duration' in map) {
+        return { type: 'span', map };
+    }
+    if ('message' in map) {
+        return { type: 'log', map };
+    }
+    return { type: 'other', map };
+}
+
+// Format a timestamp value as HH:MM:SS.mmm
+function formatTimestamp(ts) {
+    if (!ts) return '';
+    // Try parsing as a date string or unix timestamp
+    const d = new Date(ts);
+    if (!isNaN(d.getTime())) {
+        return d.toTimeString().slice(0, 8) + '.' + String(d.getMilliseconds()).padStart(3, '0');
+    }
+    // If it's already formatted, return as-is but truncate
+    return ts.length > 12 ? ts.slice(0, 12) : ts;
+}
+
+// Build summary text for an event
+function buildSummary(info, ev) {
+    if (info.type === 'span') {
+        const name = info.map['name'] || info.map['span'] || '';
+        const dur = info.map['duration'] || '';
+        const success = info.map['success'];
+        const err = info.map['error'];
+        let indicator = '';
+        if (err && err !== '' && err !== 'false') {
+            indicator = `<span class="event-error"> err</span>`;
+        } else if (success === 'true') {
+            indicator = `<span class="event-success"> ok</span>`;
+        } else if (success === 'false') {
+            indicator = `<span class="event-error"> fail</span>`;
+        }
+        return `${escapeHtml(name)} <span style="color: #6c757d;">${escapeHtml(dur)}</span>${indicator}`;
+    }
+    if (info.type === 'log') {
+        return escapeHtml(info.map['message'] || '');
+    }
+    // Other: first 3 key=value pairs (excluding timestamp)
+    const pairs = ev.filter(a => a.key !== 'timestamp').slice(0, 3);
+    return pairs.map(a => `<span style="color: #9cdcfe;">${escapeHtml(a.key)}</span>=<span style="color: #ce9178;">${escapeHtml(a.value)}</span>`).join(' ');
+}
+
+// Serialize event text for filter matching
+function eventSearchText(ev) {
+    return ev.map(a => a.key + '=' + a.value).join(' ').toLowerCase();
+}
+
 // Append a single event to the live view
-function appendLiveEvent(container, ev) {
+function appendLiveEvent(container, ev, filterText) {
+    const info = classifyEvent(ev);
+
     const row = document.createElement('div');
-    row.className = 'live-event';
+    row.className = 'live-event event-' + info.type;
+
+    // Store search text for filtering
+    const searchText = eventSearchText(ev);
+    row.dataset.search = searchText;
+
+    // Apply filter if active
+    if (filterText && !searchText.includes(filterText)) {
+        row.style.display = 'none';
+    }
+
+    // Summary line
+    const summary = document.createElement('div');
+    summary.className = 'live-event-summary';
+
+    const ts = info.map['timestamp'] ? formatTimestamp(info.map['timestamp']) : '';
+    const badgeClass = info.type === 'span' ? 'event-badge-span' : info.type === 'log' ? 'event-badge-log' : 'event-badge-evt';
+    const badgeLabel = info.type === 'span' ? 'SPAN' : info.type === 'log' ? 'LOG' : 'EVT';
+
+    summary.innerHTML = `<span class="event-timestamp">${escapeHtml(ts)}</span><span class="event-badge ${badgeClass}">${badgeLabel}</span><span class="event-summary-text">${buildSummary(info, ev)}</span>`;
+
+    summary.addEventListener('click', () => {
+        row.classList.toggle('expanded');
+    });
+
+    row.appendChild(summary);
+
+    // Detail section (hidden by default)
+    const details = document.createElement('div');
+    details.className = 'live-event-details';
 
     for (const ann of ev) {
         const line = document.createElement('div');
+        line.className = 'detail-line';
         line.innerHTML = `<span style="color: #9cdcfe;">${escapeHtml(ann.key)}</span><span style="color: #d4d4d4;">=</span><span style="color: #ce9178;">${escapeHtml(ann.value)}</span>`;
-        row.appendChild(line);
+        details.appendChild(line);
     }
 
+    row.appendChild(details);
     container.appendChild(row);
 
     if (liveAutoScroll) {

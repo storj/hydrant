@@ -428,10 +428,10 @@ The built-in web UI (served by `sub.Handler()`) provides:
   │   │  │  │  ┌─ MultiSubmitter ───────────┐   │  │  │        │
   │   │  │  │  │                            │   │  │  │        │
   │   │  │  │  │  ┌─ HTTPSubmitter ──────┐  │   │  │  │        │
-  │   │  │  │  │  │  → collector:9090   │  │   │  │  │        │
+  │   │  │  │  │  │  → collector:9090    │  │   │  │  │        │
   │   │  │  │  │  └──────────────────────┘  │   │  │  │        │
   │   │  │  │  │  ┌─ OTelSubmitter ──────┐  │   │  │  │        │
-  │   │  │  │  │  │  → jaeger:4318      │  │   │  │  │        │
+  │   │  │  │  │  │  → jaeger:4318       │  │   │  │  │        │
   │   │  │  │  │  └──────────────────────┘  │   │  │  │        │
   │   │  │  │  │  ┌─ HydratorSubmitter ──┐  │   │  │  │        │
   │   │  │  │  │  │  (in-memory query)   │  │   │  │  │        │
@@ -442,7 +442,7 @@ The built-in web UI (served by `sub.Handler()`) provides:
   │   └───────────────────────────────────────────────┘        │
   └────────────────────────────────────────────────────────────┘
            │               │                    │
-           ▼              ▼                   ▼
+           ▼               ▼                    ▼
    Remote Collector   OTel/Jaeger          Web UI &
    (zstd/HTTP)        (OTLP/HTTP)         Histogram Query
 

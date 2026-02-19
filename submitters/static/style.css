@@ -397,7 +397,7 @@ h1 {
 
 .trace-id {
     font-family: monospace;
-    color: #4a9eff;
+    color: #888;
     flex-shrink: 0;
 }
 
@@ -530,6 +530,12 @@ h1 {
     opacity: 0.85;
 }
 
+.waterfall-bar-parent {
+    outline: 2px solid #fff;
+    outline-offset: -1px;
+    z-index: 1;
+}
+
 .waterfall-bar-success {
     background: #2563eb;
 }
@@ -590,15 +596,19 @@ h1 {
     color: #e06c75;
 }
 
-.trace-root-name-link {
+.trace-view-btn {
+    font-size: 12px;
+    font-weight: 500;
     color: #4a9eff;
     cursor: pointer;
-    font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    flex-shrink: 0;
+    padding: 2px 8px;
+    border: 1px solid #4a9eff;
+    border-radius: 3px;
+    margin-left: auto;
 }
 
-.trace-root-name-link:hover {
-    text-decoration: underline;
+.trace-view-btn:hover {
+    background: #4a9eff;
+    color: #fff;
 }

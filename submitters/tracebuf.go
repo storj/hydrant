@@ -128,7 +128,7 @@ func (t *TraceBufferSubmitter) tracesHandler(w http.ResponseWriter, r *http.Requ
 	for i := 0; i < size; i++ {
 		idx := ((t.pos - 1 - i) % size + size) % size
 		entry := t.traces[idx]
-		if entry.spans == nil {
+		if entry.spans == nil || !entry.done {
 			continue
 		}
 		out = append(out, jsonTrace{

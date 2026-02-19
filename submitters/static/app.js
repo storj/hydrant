@@ -1339,21 +1339,17 @@ async function fetchAndRenderTraces(container, basePath) {
             header.className = 'trace-header';
 
             const traceIdShort = trace.trace_id.slice(0, 16);
-            const badge = trace.done
-                ? '<span class="trace-badge trace-badge-done">done</span>'
-                : '<span class="trace-badge trace-badge-pending">pending</span>';
 
             header.innerHTML = `
                 <span class="trace-id">${escapeHtml(traceIdShort)}</span>
-                ${badge}
-                <span class="trace-root-name-link">${escapeHtml(rootName)}</span>
+                <span class="trace-root-name">${escapeHtml(rootName)}</span>
                 <span class="trace-span-count">${trace.spans.length} span${trace.spans.length !== 1 ? 's' : ''}</span>
                 <span class="trace-duration">${escapeHtml(rootDuration)}</span>
+                <span class="trace-view-btn">View</span>
             `;
 
-            // Root name link opens waterfall
-            const rootLink = header.querySelector('.trace-root-name-link');
-            rootLink.addEventListener('click', (e) => {
+            // View button opens waterfall
+            header.querySelector('.trace-view-btn').addEventListener('click', (e) => {
                 e.stopPropagation();
                 renderTraceWaterfall(container, trace, basePath);
             });
@@ -1368,7 +1364,15 @@ async function fetchAndRenderTraces(container, basePath) {
             const details = document.createElement('div');
             details.className = 'trace-details';
 
-            for (const span of trace.spans) {
+            // Sort spans by start time (oldest first)
+            const sortedSpans = trace.spans.slice().sort((a, b) => {
+                const aStart = a.find(x => x.key === 'start');
+                const bStart = b.find(x => x.key === 'start');
+                if (!aStart || !bStart) return 0;
+                return aStart.value < bStart.value ? -1 : aStart.value > bStart.value ? 1 : 0;
+            });
+
+            for (const span of sortedSpans) {
                 const info = classifyEvent(span);
                 const evRow = document.createElement('div');
                 evRow.className = 'live-event event-' + info.type;
@@ -1376,7 +1380,7 @@ async function fetchAndRenderTraces(container, basePath) {
                 const summary = document.createElement('div');
                 summary.className = 'live-event-summary';
 
-                const ts = info.map['timestamp'] ? formatTimestamp(info.map['timestamp']) : '';
+                const ts = (info.map['start'] || info.map['timestamp']) ? formatTimestamp(info.map['start'] || info.map['timestamp']) : '';
                 const badgeClass = info.type === 'span' ? 'event-badge-span' : info.type === 'log' ? 'event-badge-log' : 'event-badge-evt';
                 const badgeLabel = info.type === 'span' ? 'SPAN' : info.type === 'log' ? 'LOG' : 'EVT';
 
@@ -1417,8 +1421,11 @@ async function fetchAndRenderTraces(container, basePath) {
 // Input: array of {name, startMs, durationMs, success, annotations}
 // Output: array of lanes, each lane is array of {span, leftPct, widthPct}
 function packSpansIntoLanes(spans, traceStartMs, traceDurationMs) {
-    // Sort by duration descending (longest first), then by start time
-    const sorted = spans.slice().sort((a, b) => b.durationMs - a.durationMs || a.startMs - b.startMs);
+    // Root span first, then by duration descending, then by start time
+    const sorted = spans.slice().sort((a, b) => {
+        if (a.isRoot !== b.isRoot) return a.isRoot ? -1 : 1;
+        return b.durationMs - a.durationMs || a.startMs - b.startMs;
+    });
 
     // Each lane tracks sorted intervals so we can check gaps, not just the tail.
     const lanes = []; // each entry: {intervals: [{startMs, endMs}], items: [...]}
@@ -1491,11 +1498,14 @@ function renderTraceWaterfall(container, trace, basePath) {
         const name = map['name'] || '';
 
         // Detect root span
-        if (map['span_id'] && map['span_id'] === map['parent_id']) {
+        const isRoot = !!(map['span_id'] && map['span_id'] === map['parent_id']);
+        if (isRoot) {
             rootName = name;
         }
 
-        parsed.push({ name, startMs, durationMs, success, annotations, map });
+        const spanId = map['span_id'] || '';
+        const parentId = map['parent_id'] || '';
+        parsed.push({ name, startMs, durationMs, success, isRoot, spanId, parentId, annotations, map });
     }
 
     if (parsed.length === 0) {
@@ -1559,6 +1569,9 @@ function renderTraceWaterfall(container, trace, basePath) {
         document.body.appendChild(tooltip);
     }
 
+    // Map span_id to bar element for parent highlighting
+    const barBySpanId = {};
+
     // Lanes
     for (const lane of lanes) {
         const laneDiv = document.createElement('div');
@@ -1570,13 +1583,19 @@ function renderTraceWaterfall(container, trace, basePath) {
             bar.style.left = leftPct + '%';
             bar.style.width = Math.max(widthPct, 0.3) + '%';
 
+            if (span.spanId) barBySpanId[span.spanId] = bar;
+
             const label = document.createElement('span');
             label.className = 'waterfall-bar-label';
             label.textContent = span.name;
             bar.appendChild(label);
 
-            // Tooltip handlers
+            // Tooltip + parent highlight handlers
             bar.addEventListener('mouseenter', () => {
+                const parentBar = barBySpanId[span.parentId];
+                if (parentBar && parentBar !== bar) {
+                    parentBar.classList.add('waterfall-bar-parent');
+                }
                 const offsetMs = span.startMs - traceStartMs;
                 let html = `<div class="tt-name">${escapeHtml(span.name)}</div>`;
                 html += `<div class="tt-row"><span class="tt-label">Duration:</span> ${formatDurationMs(span.durationMs)}</div>`;
@@ -1602,6 +1621,10 @@ function renderTraceWaterfall(container, trace, basePath) {
 
             bar.addEventListener('mouseleave', () => {
                 tooltip.style.display = 'none';
+                const parentBar = barBySpanId[span.parentId];
+                if (parentBar && parentBar !== bar) {
+                    parentBar.classList.remove('waterfall-bar-parent');
+                }
             });
 
             laneDiv.appendChild(bar);

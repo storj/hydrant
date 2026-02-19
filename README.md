@@ -90,7 +90,7 @@ Runnable examples live in the [examples/](examples/) directory:
 
 - **[tracebuf](examples/tracebuf/main.go)** - Trace buffer submitter. Captures
   recent traces in a ring buffer and displays them in the web UI with
-  collapsible span trees.
+  collapsible span trees and a waterfall visualization.
 
 - **[remoteconfig](examples/remoteconfig/main.go)** - Central configuration
   with `RemoteSubmitter`. A config server serves pipeline JSON over HTTP and
@@ -367,9 +367,11 @@ The filter environment is extensible. Register custom functions with
 
 ## Trace Buffer
 
-The `TraceBufferSubmitter` keeps a ring buffer of recent traces (default 64)
-for browsing in the web UI. Spans are grouped by trace_id and displayed as
-collapsible trees. A trace is marked "done" when its root span completes.
+The `TraceBufferSubmitter` keeps a ring buffer of recent completed traces
+(default 64) for browsing in the web UI. Spans are grouped by trace_id and
+displayed as collapsible trees. Click "View" on any trace to open a waterfall
+diagram that packs spans into swim lanes, with hover tooltips and parent span
+highlighting.
 
 ```json
 {
@@ -398,6 +400,9 @@ The built-in web UI (served by `sub.Handler()`) provides:
   scale modes
 - **Trace browser** - browse recent traces captured by TraceBufferSubmitters,
   expand to see individual spans with timing and annotations
+- **Trace waterfall** - compact swim-lane waterfall diagram for individual
+  traces, with spans packed into minimal rows, hover tooltips showing
+  duration/offset/annotations, and parent span highlighting
 
 ## Architecture
 

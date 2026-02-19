@@ -26,6 +26,8 @@ func (n *NullSubmitter) Children() []Submitter {
 	return []Submitter{}
 }
 
+func (n *NullSubmitter) ExtraData() any { return nil }
+
 func (n *NullSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
 	n.live.Record(ev)
 	n.stats.received.Add(1)

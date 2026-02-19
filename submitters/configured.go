@@ -69,6 +69,8 @@ func (s *ConfiguredSubmitter) Children() []Submitter {
 	return []Submitter{s.root}
 }
 
+func (s *ConfiguredSubmitter) ExtraData() any { return nil }
+
 func (s *ConfiguredSubmitter) Run(ctx context.Context) {
 	var wg sync.WaitGroup
 	for _, rsub := range s.runnable {

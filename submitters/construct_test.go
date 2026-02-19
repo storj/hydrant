@@ -91,6 +91,11 @@ var exampleData = []byte(`{
 				"kind": "filter",
 				"filter": "has(message) && eq(name, 'storj.io/storj/storagenode')",
 				"submitter": "null"
+			},
+			{
+				"kind": "filter",
+				"filter": "has(duration) && gt(key(duration), 100ms)",
+				"submitter": "null"
 			}
 		],
 		"hyd": {
@@ -112,6 +117,11 @@ var exampleData = []byte(`{
 			"kind": "prometheus",
 			"namespace": "myapp",
 			"buckets": [0.01, 0.05, 0.1, 0.5, 1, 5]
+		},
+		"tracebuf": {
+			"kind": "trace_buffer",
+			"buffer_size": 128,
+			"filter": "has(span_id)"
 		}
 	}
 }`)

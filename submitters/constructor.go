@@ -106,7 +106,11 @@ func (c *constructor) Construct(cfg config.Submitter) (Submitter, error) {
 		return NewHydratorSubmitter(), nil
 
 	case config.TraceBufferSubmitter:
-		return NewTraceBufferSubmitter(cfg.BufferSize), nil
+		fil, err := c.env.Filter.Parse(cfg.Filter)
+		if err != nil {
+			return nil, err
+		}
+		return NewTraceBufferSubmitter(cfg.BufferSize, fil), nil
 
 	case config.NullSubmitter:
 		return NewNullSubmitter(), nil

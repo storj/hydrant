@@ -4,6 +4,7 @@ let metricExpandedState = {};
 let metricLogModeState = {};
 let svgTooltip = null;
 let knownKinds = {}; // Cache path -> kind mappings
+let knownExtras = {}; // Cache path -> extra data
 let lastQuery = null; // Track last query to detect changes
 let liveEventSource = null; // Active SSE connection
 let liveAutoScroll = true; // Auto-scroll live view
@@ -107,6 +108,9 @@ function createTreeNode(node, path, isRoot = false) {
     kindSpan.className = 'tree-node-kind';
     kindSpan.textContent = node.kind;
     kindSpan.title = `Navigate to ${path}`;
+    if (node.extra) {
+        knownExtras[path] = node.extra;
+    }
     kindSpan.addEventListener('click', (e) => {
         e.stopPropagation();
         navigateToSubmitter(path, node.kind);
@@ -1231,10 +1235,13 @@ function appendLiveEvent(container, ev, filterText) {
 
 // Render TraceBuffer interface with Traces / Live / Stats tabs
 function renderTraceBufferInterface(container, basePath) {
+    const extra = knownExtras[basePath] || {};
+    const filterText = extra.filter || '';
     container.innerHTML = `
         <div style="margin-bottom: 0; padding-bottom: 15px; border-bottom: 2px solid #dee2e6;">
             <h2 style="margin: 0 0 5px 0; color: #333;">TraceBufferSubmitter</h2>
             <div style="color: #6c757d; font-size: 14px; margin-bottom: 10px;">Path: ${basePath}</div>
+            ${filterText ? `<div style="color: #6c757d; font-size: 14px; margin-bottom: 10px;">Filter: <code>${filterText}</code></div>` : ''}
             <div class="tabs" id="tracebufTabs" style="margin-bottom: 0; border-bottom: none;">
                 <button class="tab-button active" data-tbtab="traces">Traces</button>
                 <button class="tab-button" data-tbtab="live">Live</button>

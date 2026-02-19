@@ -40,6 +40,8 @@ func (h *HydratorSubmitter) Children() []Submitter {
 	return []Submitter{}
 }
 
+func (h *HydratorSubmitter) ExtraData() any { return nil }
+
 var hydratorSkipKinds = [...]bool{
 	value.KindTraceId:   true,
 	value.KindSpanId:    true,

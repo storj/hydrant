@@ -17,6 +17,10 @@ type Filter struct {
 	vals   []value.Value
 }
 
+func (f *Filter) Filter() string {
+	return f.filter
+}
+
 func (f *Filter) String() string {
 	return fmt.Sprintf("(filter %q %v %v)", f.filter, f.prog, anyfy(f.vals))
 }
@@ -79,6 +83,13 @@ func (env *Environment) Parse(filter string) (*Filter, error) {
 			env:    env,
 			filter: filter,
 		},
+	}
+
+	// if we have no tokens, then the program is empty, so we push a single true value.
+	if len(toks) == 0 {
+		ps.pushInst(instPushVal, 0)
+		ps.into.vals = append(ps.into.vals, value.Bool(true))
+		return ps.into, nil
 	}
 
 	if err := ps.parseCompoundExpr(); err != nil {

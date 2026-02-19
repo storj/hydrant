@@ -69,6 +69,8 @@ func (g *GrouperSubmitter) Children() []Submitter {
 	return []Submitter{g.sub}
 }
 
+func (g *GrouperSubmitter) ExtraData() any { return nil }
+
 func (g *GrouperSubmitter) Run(ctx context.Context) {
 	start := time.Now()
 

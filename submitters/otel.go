@@ -80,6 +80,8 @@ func (o *OTelSubmitter) Children() []Submitter {
 	return []Submitter{}
 }
 
+func (o *OTelSubmitter) ExtraData() any { return nil }
+
 func (o *OTelSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
 	o.live.Record(ev)
 	o.stats.received.Add(1)

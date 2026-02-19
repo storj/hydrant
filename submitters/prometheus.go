@@ -69,6 +69,8 @@ func (p *PrometheusSubmitter) Children() []Submitter {
 	return []Submitter{}
 }
 
+func (p *PrometheusSubmitter) ExtraData() any { return nil }
+
 func (p *PrometheusSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
 	p.live.Record(ev)
 	p.stats.received.Add(1)

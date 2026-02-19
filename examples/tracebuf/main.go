@@ -22,7 +22,9 @@ func main() {
 		Filter:  filter.NewBuiltinEnvionment(),
 		Process: process.DefaultStore,
 	}.New(config.Config{
-		Submitter: config.TraceBufferSubmitter{},
+		Submitter: config.TraceBufferSubmitter{
+			Filter: "not(key(success))",
+		},
 	})
 	if err != nil {
 		panic(err)
@@ -178,10 +180,15 @@ func simulateOrderPipeline(ctx context.Context) {
 
 // simulateParallelFanout produces a wide trace with many parallel children.
 func simulateParallelFanout(ctx context.Context) {
+	var err error
+	if rand.IntN(10) == 0 {
+		err = fmt.Errorf("simulated failure")
+	}
+
 	ctx, span := hydrant.StartSpanNamed(ctx, "batch_process",
 		hydrant.Int("batch_size", int64(4+rand.IntN(4))),
 	)
-	defer span.Done(nil)
+	defer span.Done(&err)
 
 	// fan out
 	n := 4 + rand.IntN(4)

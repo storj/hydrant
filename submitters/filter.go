@@ -41,6 +41,10 @@ func (f *FilterSubmitter) Children() []Submitter {
 	return []Submitter{f.sub}
 }
 
+func (f *FilterSubmitter) ExtraData() any {
+	return map[string]string{"filter": f.fil.Filter()}
+}
+
 func (f *FilterSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
 	f.live.Record(ev)
 	f.stats.received.Add(1)

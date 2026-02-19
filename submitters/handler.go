@@ -16,8 +16,9 @@ func treeify(sub Submitter) any {
 		children = append(children, treeify(child))
 	}
 	return map[string]any{
-		"kind": reflect.TypeOf(sub).Elem().Name(),
-		"sub":  children,
+		"kind":  reflect.TypeOf(sub).Elem().Name(),
+		"sub":   children,
+		"extra": sub.ExtraData(),
 	}
 }
 

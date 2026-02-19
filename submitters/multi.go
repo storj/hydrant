@@ -33,6 +33,8 @@ func (m *MultiSubmitter) Children() []Submitter {
 	return m.subs
 }
 
+func (m *MultiSubmitter) ExtraData() any { return nil }
+
 func (m *MultiSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
 	m.live.Record(ev)
 	m.stats.received.Add(1)

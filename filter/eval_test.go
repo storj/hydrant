@@ -57,6 +57,21 @@ func TestEvalDoubleKey(t *testing.T) {
 	assert.True(t, es.Evaluate(filter, ev))
 }
 
+func TestEvalEmptyProgram(t *testing.T) {
+	var es EvalState
+	var p Environment
+	SetBuiltins(&p)
+
+	filter, err := p.Parse(``)
+	assert.NoError(t, err)
+	t.Log(filter.prog)
+
+	assert.True(t, es.Evaluate(filter, hydrant.Event{}))
+	assert.True(t, es.Evaluate(filter, hydrant.Event{
+		hydrant.String("foo", "bar"),
+	}))
+}
+
 //
 // benchmarks
 //

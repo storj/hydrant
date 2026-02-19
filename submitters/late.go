@@ -23,6 +23,8 @@ func (l *lateSubmitter) Children() []Submitter {
 	return l.sub.Children()
 }
 
+func (l *lateSubmitter) ExtraData() any { return l.sub.ExtraData() }
+
 func (l *lateSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
 	l.sub.Submit(ctx, ev)
 }

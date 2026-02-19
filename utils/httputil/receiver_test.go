@@ -72,3 +72,4 @@ type loggingSub []hydrant.Event
 func (l *loggingSub) Submit(ctx context.Context, ev hydrant.Event) { *l = append(*l, ev) }
 func (l *loggingSub) Children() []submitters.Submitter             { return nil }
 func (l *loggingSub) Handler() http.Handler                        { return nil }
+func (l *loggingSub) ExtraData() any                               { return nil }

@@ -12,6 +12,7 @@ type Submitter interface {
 
 	Handler() http.Handler
 	Children() []Submitter
+	ExtraData() any
 }
 
 type runnable interface {

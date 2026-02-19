@@ -88,7 +88,8 @@ type (
 	}
 
 	TraceBufferSubmitter struct {
-		BufferSize int `json:"buffer_size"`
+		BufferSize int    `json:"buffer_size"`
+		Filter     string `json:"filter"`
 	}
 
 	NullSubmitter struct {

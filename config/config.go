@@ -87,6 +87,10 @@ type (
 	HydratorSubmitter struct {
 	}
 
+	TraceBufferSubmitter struct {
+		BufferSize int `json:"buffer_size"`
+	}
+
 	NullSubmitter struct {
 	}
 )
@@ -98,8 +102,9 @@ func (GrouperSubmitter) isSubmitter()    {}
 func (HTTPSubmitter) isSubmitter()       {}
 func (OTelSubmitter) isSubmitter()       {}
 func (PrometheusSubmitter) isSubmitter() {}
-func (HydratorSubmitter) isSubmitter()   {}
-func (NullSubmitter) isSubmitter()       {}
+func (HydratorSubmitter) isSubmitter()      {}
+func (TraceBufferSubmitter) isSubmitter()   {}
+func (NullSubmitter) isSubmitter()          {}
 
 //
 // unmarshal support
@@ -140,6 +145,9 @@ func UnmarshalSubmitter(dec *jsontext.Decoder, dst *Submitter) error {
 
 		case "hydrator":
 			return unmarshalOneSubmitter[HydratorSubmitter](raw, dst)
+
+		case "trace_buffer":
+			return unmarshalOneSubmitter[TraceBufferSubmitter](raw, dst)
 
 		case "null":
 			return unmarshalOneSubmitter[NullSubmitter](raw, dst)
@@ -233,6 +241,10 @@ func MarshalSubmitter(enc *jsontext.Encoder, src Submitter) error {
 	case *HydratorSubmitter:
 		type hydratorSubmitter HydratorSubmitter // prevent recursion
 		return marhsalOneSubmitter(enc, "hydrator", (*hydratorSubmitter)(cfg))
+
+	case *TraceBufferSubmitter:
+		type traceBufferSubmitter TraceBufferSubmitter // prevent recursion
+		return marhsalOneSubmitter(enc, "trace_buffer", (*traceBufferSubmitter)(cfg))
 
 	case *NullSubmitter:
 		type nullSubmitter NullSubmitter // prevent recursion

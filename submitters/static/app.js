@@ -242,6 +242,8 @@ function showSubmitterDetail(path, kind) {
     // Render based on kind
     if (kind === 'HydratorSubmitter') {
         renderHydratorInterface(mainContent, path);
+    } else if (kind === 'TraceBufferSubmitter') {
+        renderTraceBufferInterface(mainContent, path);
     } else {
         renderLiveInterface(mainContent, path, kind);
     }
@@ -268,18 +270,18 @@ async function fetchAndRenderStats(container, basePath) {
         }
 
         const table = document.createElement('table');
-        table.style.cssText = 'border-collapse: collapse; font-size: 14px; margin-top: 10px;';
+        table.style.cssText = 'border-collapse: collapse; font-size: 14px; margin-top: 10px; width: max-content; border: 1px solid #dee2e6;';
 
         for (const s of stats) {
             const row = document.createElement('tr');
 
             const nameCell = document.createElement('td');
-            nameCell.style.cssText = 'padding: 6px 20px 6px 0; color: #6c757d;';
+            nameCell.style.cssText = 'padding: 8px 16px; color: #6c757d; border: 1px solid #dee2e6;';
             nameCell.textContent = s.name;
             row.appendChild(nameCell);
 
             const valueCell = document.createElement('td');
-            valueCell.style.cssText = 'padding: 6px 0; font-weight: 500; font-variant-numeric: tabular-nums;';
+            valueCell.style.cssText = 'padding: 8px 16px; font-weight: 500; font-variant-numeric: tabular-nums; border: 1px solid #dee2e6;';
             valueCell.textContent = s.value.toLocaleString();
             row.appendChild(valueCell);
 
@@ -296,7 +298,7 @@ function startStatsView(container, basePath) {
     stopStatsRefresh();
     container.innerHTML = '<div class="loading">Loading stats...</div>';
     fetchAndRenderStats(container, basePath);
-    statsInterval = setInterval(() => fetchAndRenderStats(container, basePath), 10000);
+    statsInterval = setInterval(() => fetchAndRenderStats(container, basePath), 1000);
 }
 
 // Render Hydrator query interface (with tabs: Query / Live / Stats)
@@ -1227,6 +1229,183 @@ function appendLiveEvent(container, ev, filterText) {
     }
 }
 
+// Render TraceBuffer interface with Traces / Live / Stats tabs
+function renderTraceBufferInterface(container, basePath) {
+    container.innerHTML = `
+        <div style="margin-bottom: 0; padding-bottom: 15px; border-bottom: 2px solid #dee2e6;">
+            <h2 style="margin: 0 0 5px 0; color: #333;">TraceBufferSubmitter</h2>
+            <div style="color: #6c757d; font-size: 14px; margin-bottom: 10px;">Path: ${basePath}</div>
+            <div class="tabs" id="tracebufTabs" style="margin-bottom: 0; border-bottom: none;">
+                <button class="tab-button active" data-tbtab="traces">Traces</button>
+                <button class="tab-button" data-tbtab="live">Live</button>
+                <button class="tab-button" data-tbtab="stats">Stats</button>
+            </div>
+        </div>
+        <div id="tracebufTracesTab" style="flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; margin-top: 15px;"></div>
+        <div id="tracebufLiveTab" style="flex: 1; display: none; flex-direction: column; overflow: hidden; min-height: 0; margin-top: 15px;"></div>
+        <div id="tracebufStatsTab" style="flex: 1; display: none; flex-direction: column; overflow: hidden; min-height: 0; margin-top: 15px;"></div>
+    `;
+
+    const tabMap = {
+        traces: document.getElementById('tracebufTracesTab'),
+        live: document.getElementById('tracebufLiveTab'),
+        stats: document.getElementById('tracebufStatsTab'),
+    };
+
+    document.querySelectorAll('#tracebufTabs .tab-button').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tab = btn.getAttribute('data-tbtab');
+            document.querySelectorAll('#tracebufTabs .tab-button').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            closeLiveStream();
+            for (const [key, el] of Object.entries(tabMap)) {
+                el.style.display = key === tab ? 'flex' : 'none';
+            }
+
+            if (tab === 'traces') {
+                fetchAndRenderTraces(tabMap.traces, basePath);
+            } else if (tab === 'live') {
+                startLiveView(tabMap.live, basePath);
+            } else if (tab === 'stats') {
+                startStatsView(tabMap.stats, basePath);
+            }
+        });
+    });
+
+    // Start with Traces tab active
+    fetchAndRenderTraces(tabMap.traces, basePath);
+}
+
+// Fetch traces and render the trace list
+async function fetchAndRenderTraces(container, basePath) {
+    container.innerHTML = '<div class="loading">Loading traces...</div>';
+
+    try {
+        const resp = await fetch(`${basePath}/traces`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const traces = await resp.json();
+
+        container.innerHTML = '';
+
+        // Refresh button
+        const toolbar = document.createElement('div');
+        toolbar.style.cssText = 'flex-shrink: 0; margin-bottom: 10px;';
+        const refreshBtn = document.createElement('button');
+        refreshBtn.textContent = 'Refresh';
+        refreshBtn.style.cssText = 'padding: 6px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;';
+        refreshBtn.addEventListener('click', () => fetchAndRenderTraces(container, basePath));
+        toolbar.appendChild(refreshBtn);
+        container.appendChild(toolbar);
+
+        if (!traces || traces.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'empty-state';
+            empty.textContent = 'No traces captured yet';
+            container.appendChild(empty);
+            return;
+        }
+
+        const list = document.createElement('div');
+        list.className = 'trace-list';
+        list.style.cssText = 'flex: 1; min-height: 0;';
+
+        for (const trace of traces) {
+            const row = document.createElement('div');
+            row.className = 'trace-row';
+
+            // Find root span info
+            let rootName = '';
+            let rootDuration = '';
+            for (const span of trace.spans) {
+                const info = classifyEvent(span);
+                if (info.type === 'span') {
+                    // Check if this is root (span_id == parent_id)
+                    let spanId = '', parentId = '';
+                    for (const a of span) {
+                        if (a.key === 'span_id') spanId = a.value;
+                        if (a.key === 'parent_id') parentId = a.value;
+                    }
+                    if (spanId && spanId === parentId) {
+                        rootName = info.map['name'] || '';
+                        rootDuration = info.map['duration'] || '';
+                        break;
+                    }
+                }
+            }
+
+            // Header
+            const header = document.createElement('div');
+            header.className = 'trace-header';
+
+            const traceIdShort = trace.trace_id.slice(0, 16);
+            const badge = trace.done
+                ? '<span class="trace-badge trace-badge-done">done</span>'
+                : '<span class="trace-badge trace-badge-pending">pending</span>';
+
+            header.innerHTML = `
+                <span class="trace-id">${escapeHtml(traceIdShort)}</span>
+                ${badge}
+                <span class="trace-root-name">${escapeHtml(rootName)}</span>
+                <span class="trace-span-count">${trace.spans.length} span${trace.spans.length !== 1 ? 's' : ''}</span>
+                <span class="trace-duration">${escapeHtml(rootDuration)}</span>
+            `;
+
+            header.addEventListener('click', () => {
+                row.classList.toggle('expanded');
+            });
+
+            row.appendChild(header);
+
+            // Expanded span list
+            const details = document.createElement('div');
+            details.className = 'trace-details';
+
+            for (const span of trace.spans) {
+                const info = classifyEvent(span);
+                const evRow = document.createElement('div');
+                evRow.className = 'live-event event-' + info.type;
+
+                const summary = document.createElement('div');
+                summary.className = 'live-event-summary';
+
+                const ts = info.map['timestamp'] ? formatTimestamp(info.map['timestamp']) : '';
+                const badgeClass = info.type === 'span' ? 'event-badge-span' : info.type === 'log' ? 'event-badge-log' : 'event-badge-evt';
+                const badgeLabel = info.type === 'span' ? 'SPAN' : info.type === 'log' ? 'LOG' : 'EVT';
+
+                summary.innerHTML = `<span class="event-timestamp">${escapeHtml(ts)}</span><span class="event-badge ${badgeClass}">${badgeLabel}</span><span class="event-summary-text">${buildSummary(info, span)}</span>`;
+
+                summary.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    evRow.classList.toggle('expanded');
+                });
+
+                evRow.appendChild(summary);
+
+                const evDetails = document.createElement('div');
+                evDetails.className = 'live-event-details';
+
+                for (const ann of span) {
+                    const line = document.createElement('div');
+                    line.className = 'detail-line';
+                    line.innerHTML = `<span style="color: #9cdcfe;">${escapeHtml(ann.key)}</span><span style="color: #d4d4d4;">=</span><span style="color: #ce9178;">${escapeHtml(ann.value)}</span>`;
+                    evDetails.appendChild(line);
+                }
+
+                evRow.appendChild(evDetails);
+                details.appendChild(evRow);
+            }
+
+            row.appendChild(details);
+            list.appendChild(row);
+        }
+
+        container.appendChild(list);
+    } catch (e) {
+        container.innerHTML = `<div class="error">Failed to load traces: ${e.message}</div>`;
+    }
+}
+
 function escapeHtml(s) {
     const div = document.createElement('div');
     div.textContent = s;
@@ -1282,6 +1461,14 @@ async function handleHashChange() {
 // Initialize the page
 document.addEventListener('DOMContentLoaded', async () => {
     await Promise.all([loadTree(), loadNames()]);
+
+    // If no named submitters, default to the tree tab
+    const namesView = document.getElementById('namesView');
+    const hasNames = namesView.children.length > 0 &&
+        !namesView.querySelector('.empty-state');
+    if (!hasNames) {
+        switchToTab('tree');
+    }
 
     // Check if there's a hash on initial load
     const hash = window.location.hash.slice(1);

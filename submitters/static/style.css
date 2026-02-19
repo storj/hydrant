@@ -363,3 +363,91 @@ h1 {
 .resume-scroll-btn:hover {
     background: rgba(0, 123, 255, 1);
 }
+
+/* Trace List Styles */
+.trace-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow-y: auto;
+    min-height: 0;
+}
+
+.trace-row {
+    background: #1e1e1e;
+    border-radius: 4px;
+    overflow: hidden;
+    flex-shrink: 0;
+}
+
+.trace-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    cursor: pointer;
+    user-select: none;
+    transition: background-color 0.1s;
+    font-size: 13px;
+}
+
+.trace-header:hover {
+    background-color: #2a2a2a;
+}
+
+.trace-id {
+    font-family: monospace;
+    color: #4a9eff;
+    flex-shrink: 0;
+}
+
+.trace-root-name {
+    color: #d4d4d4;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.trace-span-count {
+    color: #6c757d;
+    font-size: 12px;
+    flex-shrink: 0;
+}
+
+.trace-duration {
+    color: #6c757d;
+    font-size: 12px;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+}
+
+.trace-badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.trace-badge-done {
+    background: #1a3a1a;
+    color: #98c379;
+}
+
+.trace-badge-pending {
+    background: #3a3520;
+    color: #e5c07b;
+}
+
+.trace-details {
+    display: none;
+    border-top: 1px solid #333;
+    padding: 4px;
+}
+
+.trace-row.expanded .trace-details {
+    display: block;
+}

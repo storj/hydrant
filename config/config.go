@@ -96,16 +96,16 @@ type (
 	}
 )
 
-func (MultiSubmitter) isSubmitter()      {}
-func (NamedSubmitter) isSubmitter()      {}
-func (FilterSubmitter) isSubmitter()     {}
-func (GrouperSubmitter) isSubmitter()    {}
-func (HTTPSubmitter) isSubmitter()       {}
-func (OTelSubmitter) isSubmitter()       {}
-func (PrometheusSubmitter) isSubmitter() {}
-func (HydratorSubmitter) isSubmitter()      {}
-func (TraceBufferSubmitter) isSubmitter()   {}
-func (NullSubmitter) isSubmitter()          {}
+func (MultiSubmitter) isSubmitter()       {}
+func (NamedSubmitter) isSubmitter()       {}
+func (FilterSubmitter) isSubmitter()      {}
+func (GrouperSubmitter) isSubmitter()     {}
+func (HTTPSubmitter) isSubmitter()        {}
+func (OTelSubmitter) isSubmitter()        {}
+func (PrometheusSubmitter) isSubmitter()  {}
+func (HydratorSubmitter) isSubmitter()    {}
+func (TraceBufferSubmitter) isSubmitter() {}
+func (NullSubmitter) isSubmitter()        {}
 
 //
 // unmarshal support

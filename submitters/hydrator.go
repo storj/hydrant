@@ -20,13 +20,14 @@ import (
 )
 
 type HydratorSubmitter struct {
+	live  liveBuffer
 	mu    sync.Mutex
 	idx   memindex.T
 	hists []*flathist.Histogram
 }
 
 func NewHydratorSubmitter() *HydratorSubmitter {
-	return &HydratorSubmitter{}
+	return &HydratorSubmitter{live: newLiveBuffer()}
 }
 
 func (h *HydratorSubmitter) Children() []Submitter {
@@ -34,6 +35,8 @@ func (h *HydratorSubmitter) Children() []Submitter {
 }
 
 func (h *HydratorSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
+	h.live.Record(ev)
+
 	hasHist := false
 
 	// TODO: building the metric key could have some protection against high cardinality fields.
@@ -162,6 +165,7 @@ func (h *HydratorSubmitter) Annotations(cb func([]byte) bool) bool {
 func (h *HydratorSubmitter) Handler() http.Handler {
 	return hmux.Dir{
 		"/tree":  constJSONHandler(treeify(h)),
+		"/live":  h.live.Handler(),
 		"/query": http.HandlerFunc(h.queryHandler),
 	}
 }

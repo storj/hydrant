@@ -12,6 +12,7 @@ import (
 
 type MultiSubmitter struct {
 	subs []Submitter
+	live liveBuffer
 }
 
 func NewMultiSubmitter(
@@ -19,6 +20,7 @@ func NewMultiSubmitter(
 ) *MultiSubmitter {
 	return &MultiSubmitter{
 		subs: subs,
+		live: newLiveBuffer(),
 	}
 }
 
@@ -27,6 +29,8 @@ func (m *MultiSubmitter) Children() []Submitter {
 }
 
 func (m *MultiSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
+	m.live.Record(ev)
+
 	for _, sub := range m.subs {
 		sub.Submit(ctx, ev)
 	}
@@ -40,6 +44,7 @@ func (m *MultiSubmitter) Handler() http.Handler {
 
 	return hmux.Dir{
 		"/tree": constJSONHandler(treeify(m)),
+		"/live": m.live.Handler(),
 		"/sub":  subs,
 	}
 }

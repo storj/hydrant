@@ -35,6 +35,7 @@ type promSeries struct {
 type PrometheusSubmitter struct {
 	namespace string
 	buckets   []float64
+	live      liveBuffer
 
 	mu     sync.Mutex
 	series map[string]*promSeries
@@ -53,6 +54,7 @@ func NewPrometheusSubmitter(namespace string, buckets []float64) *PrometheusSubm
 	return &PrometheusSubmitter{
 		namespace: namespace,
 		buckets:   buckets,
+		live:      newLiveBuffer(),
 		series:    make(map[string]*promSeries),
 	}
 }
@@ -62,6 +64,8 @@ func (p *PrometheusSubmitter) Children() []Submitter {
 }
 
 func (p *PrometheusSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
+	p.live.Record(ev)
+
 	// Only process events that have a duration histogram.
 	hasDuration := false
 	for _, ann := range ev {
@@ -158,6 +162,7 @@ func (p *PrometheusSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
 func (p *PrometheusSubmitter) Handler() http.Handler {
 	return hmux.Dir{
 		"/tree":    constJSONHandler(treeify(p)),
+		"/live":    p.live.Handler(),
 		"/metrics": http.HandlerFunc(p.metricsHandler),
 	}
 }

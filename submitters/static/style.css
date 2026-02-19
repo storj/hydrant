@@ -210,3 +210,19 @@ h1 {
     padding: 40px;
     font-style: italic;
 }
+
+/* Live Event Styles */
+.live-event {
+    border-bottom: 1px solid #333;
+    padding: 3px 0;
+}
+
+.live-event-summary:hover {
+    background-color: #2d2d2d;
+}
+
+.live-event-detail {
+    padding: 4px 0;
+    border-top: 1px solid #333;
+    background-color: #252525;
+}

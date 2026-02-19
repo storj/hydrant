@@ -30,6 +30,7 @@ type OTelSubmitter struct {
 	logsURL   string
 	interval  time.Duration
 	resource  *resourcepb.Resource
+	live      liveBuffer
 
 	mu      sync.Mutex
 	spans   []hydrant.Event
@@ -57,6 +58,7 @@ func NewOTelSubmitter(
 		logsURL:   endpoint + "/v1/logs",
 		interval:  interval,
 		resource:  &resourcepb.Resource{Attributes: attrs},
+		live:      newLiveBuffer(),
 		spans:     make([]hydrant.Event, 0, batchSize),
 		logs:      make([]hydrant.Event, 0, batchSize),
 		trigger:   make(chan struct{}, 1),
@@ -68,6 +70,8 @@ func (o *OTelSubmitter) Children() []Submitter {
 }
 
 func (o *OTelSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
+	o.live.Record(ev)
+
 	o.mu.Lock()
 	if otelutil.IsSpanEvent(ev) {
 		if len(o.spans) < cap(o.spans) {
@@ -163,6 +167,7 @@ func (o *OTelSubmitter) flushLogs(ctx context.Context, events []hydrant.Event) {
 func (o *OTelSubmitter) Handler() http.Handler {
 	return hmux.Dir{
 		"/tree": constJSONHandler(treeify(o)),
+		"/live": o.live.Handler(),
 	}
 }
 

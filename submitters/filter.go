@@ -14,8 +14,9 @@ import (
 var filterEvalPool = sync.Pool{New: func() any { return new(filter.EvalState) }}
 
 type FilterSubmitter struct {
-	fil *filter.Filter
-	sub Submitter
+	fil  *filter.Filter
+	sub  Submitter
+	live liveBuffer
 }
 
 func NewFilterSubmitter(
@@ -23,8 +24,9 @@ func NewFilterSubmitter(
 	sub Submitter,
 ) *FilterSubmitter {
 	return &FilterSubmitter{
-		fil: fil,
-		sub: sub,
+		fil:  fil,
+		sub:  sub,
+		live: newLiveBuffer(),
 	}
 }
 
@@ -33,6 +35,8 @@ func (f *FilterSubmitter) Children() []Submitter {
 }
 
 func (f *FilterSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
+	f.live.Record(ev)
+
 	es := filterEvalPool.Get().(*filter.EvalState)
 	if es.Evaluate(f.fil, ev) {
 		f.sub.Submit(ctx, ev)
@@ -43,6 +47,7 @@ func (f *FilterSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
 func (f *FilterSubmitter) Handler() http.Handler {
 	return hmux.Dir{
 		"/tree": constJSONHandler(treeify(f)),
+		"/live": f.live.Handler(),
 		"/sub":  f.sub.Handler(),
 	}
 }

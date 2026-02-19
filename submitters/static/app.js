@@ -5,6 +5,8 @@ let metricLogModeState = {};
 let svgTooltip = null;
 let knownKinds = {}; // Cache path -> kind mappings
 let lastQuery = null; // Track last query to detect changes
+let liveEventSource = null; // Active SSE connection
+let liveAutoScroll = true; // Auto-scroll live view
 
 // Tab Management
 document.querySelectorAll('.tab-button').forEach(button => {
@@ -206,25 +208,30 @@ function navigateToSubmitter(path, kind) {
 
 // Show submitter detail view
 function showSubmitterDetail(path, kind) {
+    closeLiveStream();
     const mainContent = document.getElementById('main-content');
 
     // Render based on kind
     if (kind === 'HydratorSubmitter') {
         renderHydratorInterface(mainContent, path);
     } else {
-        renderGenericInterface(mainContent, path, kind);
+        renderLiveInterface(mainContent, path, kind);
     }
 }
 
-// Render Hydrator query interface
+// Render Hydrator query interface (with tabs: Query / Live)
 function renderHydratorInterface(container, basePath) {
     container.innerHTML = `
-        <div style="margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #dee2e6;">
-            <h2 style="margin: 0 0 5px 0; color: #333;">Hydrator Query</h2>
-            <div style="color: #6c757d; font-size: 14px;">Path: ${basePath}</div>
+        <div style="margin-bottom: 0; padding-bottom: 15px; border-bottom: 2px solid #dee2e6;">
+            <h2 style="margin: 0 0 5px 0; color: #333;">HydratorSubmitter</h2>
+            <div style="color: #6c757d; font-size: 14px; margin-bottom: 10px;">Path: ${basePath}</div>
+            <div class="tabs" id="hydratorTabs" style="margin-bottom: 0; border-bottom: none;">
+                <button class="tab-button active" data-htab="query">Query</button>
+                <button class="tab-button" data-htab="live">Live</button>
+            </div>
         </div>
-        <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
-            <form id="queryForm" style="flex-shrink: 0; margin-bottom: 20px;">
+        <div id="hydratorQueryTab" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+            <form id="queryForm" style="flex-shrink: 0; margin-bottom: 20px; margin-top: 15px;">
                 <div style="margin-bottom: 15px;">
                     <label for="query" style="display: block; margin-bottom: 5px; color: #555; font-weight: 500;">Query:</label>
                     <input type="text" id="query" name="q" value="{ }" required
@@ -264,7 +271,30 @@ function renderHydratorInterface(container, basePath) {
             <div id="loading" class="loading" style="display: none;">Loading...</div>
             <div id="results" style="flex: 1; overflow-y: auto;"></div>
         </div>
+        <div id="hydratorLiveTab" style="flex: 1; display: none; flex-direction: column; overflow: hidden; margin-top: 15px;"></div>
     `;
+
+    // Hydrator tab switching
+    document.querySelectorAll('#hydratorTabs .tab-button').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const tab = btn.getAttribute('data-htab');
+            document.querySelectorAll('#hydratorTabs .tab-button').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            const queryTab = document.getElementById('hydratorQueryTab');
+            const liveTab = document.getElementById('hydratorLiveTab');
+
+            if (tab === 'query') {
+                closeLiveStream();
+                queryTab.style.display = 'flex';
+                liveTab.style.display = 'none';
+            } else {
+                queryTab.style.display = 'none';
+                liveTab.style.display = 'flex';
+                startLiveView(liveTab, basePath);
+            }
+        });
+    });
 
     // Query form handler
     document.getElementById('queryForm').addEventListener('submit', async (e) => {
@@ -837,17 +867,118 @@ function createQuantilesSVG(quantiles, useLogScale) {
     return svg;
 }
 
-// Render generic interface for other submitter types
-function renderGenericInterface(container, path, kind) {
+// Render live interface for non-hydrator submitters
+function renderLiveInterface(container, path, kind) {
     container.innerHTML = `
         <div style="margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #dee2e6;">
             <h2 style="margin: 0 0 5px 0; color: #333;">${kind}</h2>
             <div style="color: #6c757d; font-size: 14px;">Path: ${path}</div>
         </div>
-        <div style="padding: 20px; background-color: #f8f9fa; border-radius: 4px;">
-            <p style="margin: 0; color: #6c757d; font-style: italic;">This submitter type does not have a custom interface.</p>
-        </div>
+        <div id="liveContainer" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;"></div>
     `;
+    startLiveView(document.getElementById('liveContainer'), path);
+}
+
+// Close any active SSE connection
+function closeLiveStream() {
+    if (liveEventSource) {
+        liveEventSource.close();
+        liveEventSource = null;
+    }
+}
+
+// Start the live event viewer in a container
+async function startLiveView(container, basePath) {
+    closeLiveStream();
+    liveAutoScroll = true;
+
+    container.innerHTML = `
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-shrink: 0;">
+            <span style="font-weight: 500; color: #555;">Live Events</span>
+            <label style="display: flex; align-items: center; gap: 5px; font-size: 13px; cursor: pointer;">
+                <input type="checkbox" id="liveAutoScroll" checked />
+                <span>Auto-scroll</span>
+            </label>
+        </div>
+        <div id="liveEvents" style="flex: 1; overflow-y: auto; font-family: monospace; font-size: 13px; background: #1e1e1e; color: #d4d4d4; border-radius: 4px; padding: 10px;"></div>
+        <div id="liveStatus" style="flex-shrink: 0; padding: 5px 0; font-size: 12px; color: #6c757d;"></div>
+    `;
+
+    const eventsDiv = document.getElementById('liveEvents');
+    const statusDiv = document.getElementById('liveStatus');
+
+    document.getElementById('liveAutoScroll').addEventListener('change', (e) => {
+        liveAutoScroll = e.target.checked;
+        if (liveAutoScroll) {
+            eventsDiv.scrollTop = eventsDiv.scrollHeight;
+        }
+    });
+
+    // Fetch initial snapshot
+    try {
+        const resp = await fetch(`${basePath}/live`);
+        if (resp.ok) {
+            const events = await resp.json();
+            if (events && events.length > 0) {
+                for (const ev of events) {
+                    appendLiveEvent(eventsDiv, ev);
+                }
+                statusDiv.textContent = `Loaded ${events.length} recent events. Streaming...`;
+            } else {
+                statusDiv.textContent = 'Waiting for events...';
+            }
+        }
+    } catch (e) {
+        statusDiv.textContent = 'Failed to load initial events.';
+    }
+
+    // Open SSE stream
+    liveEventSource = new EventSource(`${basePath}/live?watch=1`);
+    let count = 0;
+
+    liveEventSource.onmessage = (e) => {
+        try {
+            const ev = JSON.parse(e.data);
+            appendLiveEvent(eventsDiv, ev);
+            count++;
+            statusDiv.textContent = `Streaming... (${count} new)`;
+
+            // Cap displayed events to prevent memory issues
+            while (eventsDiv.children.length > 2000) {
+                eventsDiv.removeChild(eventsDiv.firstChild);
+            }
+        } catch (err) {
+            // ignore parse errors
+        }
+    };
+
+    liveEventSource.onerror = () => {
+        statusDiv.textContent = 'Connection lost. Reconnecting...';
+    };
+}
+
+// Append a single event to the live view
+function appendLiveEvent(container, ev) {
+    const row = document.createElement('div');
+    row.className = 'live-event';
+
+    for (const ann of ev) {
+        const line = document.createElement('div');
+        line.innerHTML = `<span style="color: #9cdcfe;">${escapeHtml(ann.key)}</span><span style="color: #d4d4d4;">=</span><span style="color: #ce9178;">${escapeHtml(ann.value)}</span>`;
+        row.appendChild(line);
+    }
+
+    container.appendChild(row);
+
+    if (liveAutoScroll) {
+        container.scrollTop = container.scrollHeight;
+    }
+}
+
+function escapeHtml(s) {
+    const div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
 }
 
 // Handle hash changes (back/forward buttons)
@@ -860,6 +991,7 @@ async function handleHashChange() {
 
     if (!hash) {
         // Back to root - show empty state
+        closeLiveStream();
         document.getElementById('main-content').innerHTML = '<div class="empty-state">Select a submitter from the left to view details</div>';
         currentPath = null;
         return;

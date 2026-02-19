@@ -36,6 +36,7 @@ type GrouperSubmitter struct {
 	grouper  *group.Grouper
 	sub      Submitter
 	interval time.Duration
+	live     liveBuffer
 
 	mu     sync.Mutex
 	groups map[unique.Handle[string]]*groupedEvents
@@ -50,6 +51,7 @@ func NewGrouperSubmitter(
 		grouper:  group.NewGrouper(fields),
 		sub:      sub,
 		interval: utils.Bound(interval, [2]time.Duration{minGroupInterval, maxGroupInterval}),
+		live:     newLiveBuffer(),
 
 		groups: make(map[unique.Handle[string]]*groupedEvents),
 	}
@@ -75,7 +77,12 @@ func (g *GrouperSubmitter) Run(ctx context.Context) {
 }
 
 func (g *GrouperSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
-	key := g.grouper.Group(ev)
+	g.live.Record(ev)
+
+	key, ok := g.grouper.Group(ev)
+	if !ok {
+		return
+	}
 
 	// TODO: it'd be nice if this mutex was smaller or non-existent but we have to coordinate with
 	// the flush call. perhaps we can swaparoo it. we would also either need to add a mutex to the
@@ -199,6 +206,7 @@ func (g *GrouperSubmitter) flush(ctx context.Context, start time.Time) time.Time
 func (g *GrouperSubmitter) Handler() http.Handler {
 	return hmux.Dir{
 		"/tree": constJSONHandler(treeify(g)),
+		"/live": g.live.Handler(),
 		"/sub":  g.sub.Handler(),
 	}
 }

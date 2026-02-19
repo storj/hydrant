@@ -3,8 +3,9 @@ package group
 import (
 	"context"
 	"runtime"
-	"strings"
 	"testing"
+
+	"github.com/zeebo/assert"
 
 	"storj.io/hydrant"
 )
@@ -12,16 +13,23 @@ import (
 func TestGrouperInclude(t *testing.T) {
 	g := NewGrouper([]string{"key1", "key2"})
 
-	h1 := g.Group(hydrant.Event{
+	h1, ok := g.Group(hydrant.Event{
 		hydrant.String("key1", "value1"),
 		hydrant.Int("key3", 42),
 		hydrant.String("key2", "value2"),
 	})
+	assert.That(t, ok)
 
-	h2 := g.Group(hydrant.Event{
+	h2, ok := g.Group(hydrant.Event{
 		hydrant.String("key1", "value1"),
 		hydrant.String("key2", "value2"),
 	})
+	assert.That(t, ok)
+
+	_, ok = g.Group(hydrant.Event{
+		hydrant.String("key1", "value1"),
+	})
+	assert.That(t, !ok)
 
 	if h1 != h2 {
 		t.Errorf("expected h1 and h2 to be equal: %v != %v", h1, h2)
@@ -47,23 +55,21 @@ func BenchmarkGrouper_Include_SpanByNameSuccess(b *testing.B) {
 	func() { _, span := hydrant.StartSpan(ctx); span.Done(nil) }()
 
 	g := NewGrouper([]string{"name", "success"})
-	h := g.Group(ev)
+	h, ok := g.Group(ev)
+	assert.That(b, ok)
 
 	b.ReportAllocs()
 	for b.Loop() {
-		h = g.Group(ev)
+		h, ok = g.Group(ev)
 	}
 
 	b.Logf("%x", h.Value())
 	runtime.KeepAlive(h)
+	runtime.KeepAlive(ok)
 }
 
 type eventSubmitter hydrant.Event
 
 func (es *eventSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
 	*es = eventSubmitter(ev)
-}
-
-func compareAnnotations(a, b hydrant.Annotation) int {
-	return strings.Compare(a.Key, b.Key)
 }

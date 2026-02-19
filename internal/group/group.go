@@ -25,16 +25,17 @@ func NewGrouper(keys []string) *Grouper {
 	return g
 }
 
-func (g *Grouper) Group(ev hydrant.Event) unique.Handle[string] {
+func (g *Grouper) Group(ev hydrant.Event) (unique.Handle[string], bool) {
 	buf := make([]byte, 0, 256)
 
+keys:
 	for i, key := range g.keys {
 		if h := g.hints[i].Load(); h != 0 {
 			h >>= 1
 			if h < uint32(len(ev)) && ev[h].Key == key {
 				buf = appendString(buf, ev[h].Key)
 				buf = ev[h].Value.AppendTo(buf)
-				continue
+				continue keys
 			}
 		}
 
@@ -43,12 +44,14 @@ func (g *Grouper) Group(ev hydrant.Event) unique.Handle[string] {
 				buf = appendString(buf, ev[j].Key)
 				buf = ev[j].Value.AppendTo(buf)
 				g.hints[i].Store(uint32(j)<<1 | 1)
-				continue
+				continue keys
 			}
 		}
+
+		return unique.Handle[string]{}, false
 	}
 
-	return unique.Make(string(buf))
+	return unique.Make(string(buf)), true
 }
 
 func (g *Grouper) Annotations(ev hydrant.Event) []hydrant.Annotation {

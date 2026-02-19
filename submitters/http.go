@@ -20,6 +20,7 @@ type HTTPSubmitter struct {
 	process  []hydrant.Annotation
 	interval time.Duration
 	enc      *zstd.Encoder
+	live     liveBuffer
 
 	mu      sync.Mutex
 	batch   []hydrant.Event
@@ -45,6 +46,7 @@ func NewHTTPSubmitter(
 		process:  process,
 		interval: interval,
 		enc:      enc,
+		live:     newLiveBuffer(),
 
 		batch:   make([]hydrant.Event, 0, batch),
 		trigger: make(chan struct{}, 1),
@@ -79,6 +81,8 @@ func (h *HTTPSubmitter) Trigger() {
 }
 
 func (h *HTTPSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
+	h.live.Record(ev)
+
 	h.mu.Lock()
 	if len(h.batch) < cap(h.batch) {
 		h.batch = append(h.batch, ev)
@@ -130,5 +134,6 @@ func (h *HTTPSubmitter) flush(ctx context.Context) {
 func (h *HTTPSubmitter) Handler() http.Handler {
 	return hmux.Dir{
 		"/tree": constJSONHandler(treeify(h)),
+		"/live": h.live.Handler(),
 	}
 }

@@ -9,20 +9,25 @@ import (
 	"storj.io/hydrant"
 )
 
-type NullSubmitter struct{}
+type NullSubmitter struct {
+	live liveBuffer
+}
 
 func NewNullSubmitter() *NullSubmitter {
-	return &NullSubmitter{}
+	return &NullSubmitter{live: newLiveBuffer()}
 }
 
 func (n *NullSubmitter) Children() []Submitter {
 	return []Submitter{}
 }
 
-func (n *NullSubmitter) Submit(ctx context.Context, ev hydrant.Event) {}
+func (n *NullSubmitter) Submit(ctx context.Context, ev hydrant.Event) {
+	n.live.Record(ev)
+}
 
 func (n *NullSubmitter) Handler() http.Handler {
 	return hmux.Dir{
 		"/tree": constJSONHandler(treeify(n)),
+		"/live": n.live.Handler(),
 	}
 }

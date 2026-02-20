@@ -484,7 +484,7 @@ function renderQueryResults(data) {
             namesList.style.marginTop = '10px';
             data.Names.forEach(name => {
                 const li = document.createElement('li');
-                li.textContent = name;
+                li.appendChild(renderMetricName(name));
                 namesList.appendChild(li);
             });
             namesDropdown.appendChild(namesList);
@@ -513,7 +513,7 @@ function renderQueryResults(data) {
             summary.style.backgroundColor = '#f8f9fa';
             summary.style.borderRadius = '4px';
             summary.style.fontWeight = '500';
-            summary.textContent = name;
+            summary.appendChild(renderMetricName(name));
             details.appendChild(summary);
 
             const content = document.createElement('div');
@@ -1679,6 +1679,7 @@ function renderWaterfallView(container, allSpans, rootName, traceId, basePath, z
             bar.className = 'waterfall-bar ' + (span.success ? 'waterfall-bar-success' : 'waterfall-bar-error');
             if (clippedLeft) bar.classList.add('waterfall-bar-clipped-left');
             if (clippedRight && !expanded) bar.classList.add('waterfall-bar-clipped-right');
+            if (expanded) bar.classList.add('waterfall-bar-expanded');
             bar.style.left = finalLeft + '%';
             bar.style.width = finalWidth + '%';
 
@@ -1697,7 +1698,7 @@ function renderWaterfallView(container, allSpans, rootName, traceId, basePath, z
                 }
                 const offset = span.start - traceStart;
                 let html = `<div class="tt-name">${escapeHtml(span.name)}</div>`;
-                html += `<div class="tt-row"><span class="tt-label">Duration:</span> ${escapeHtml(span.map['duration'] || formatDuration(span.duration))}</div>`;
+                html += `<div class="tt-row"><span class="tt-label">Duration:</span> ${escapeHtml(span.map['duration'] || formatDuration(span.duration))}${expanded ? ' (expanded)' : ''}</div>`;
                 html += `<div class="tt-row"><span class="tt-label">Offset:</span> ${formatDuration(offset)}</div>`;
                 html += `<div class="tt-row"><span class="tt-label">Status:</span> <span class="${span.success ? 'tt-success' : 'tt-error'}">${span.success ? 'success' : 'error'}</span></div>`;
 
@@ -1780,6 +1781,83 @@ function renderWaterfallView(container, allSpans, rootName, traceId, basePath, z
             bar.classList.toggle('waterfall-bar-dimmed', q !== '' && !searchText.includes(q));
         }
     });
+}
+
+// Parse a metric name like "_=duration,name=foo,cached" into
+// { metric: "duration", tags: [{key:"name", value:"foo"}, {key:"cached"}] }
+// Handles escaping: \, for literal comma, \= for literal equals, \\ for literal backslash.
+function parseMetricName(raw) {
+    function unescape(s) {
+        let out = '';
+        for (let i = 0; i < s.length; i++) {
+            if (s[i] === '\\' && i + 1 < s.length) { out += s[++i]; }
+            else { out += s[i]; }
+        }
+        return out;
+    }
+
+    // Split on unescaped commas (keep escapes intact).
+    const parts = [];
+    let cur = '';
+    for (let i = 0; i < raw.length; i++) {
+        if (raw[i] === '\\' && i + 1 < raw.length) {
+            cur += raw[i] + raw[i + 1];
+            i++;
+        } else if (raw[i] === ',') {
+            parts.push(cur);
+            cur = '';
+        } else {
+            cur += raw[i];
+        }
+    }
+    if (cur) parts.push(cur);
+
+    let metric = raw;
+    const tags = [];
+    for (const part of parts) {
+        // Find first unescaped '='
+        let eqIdx = -1;
+        for (let i = 0; i < part.length; i++) {
+            if (part[i] === '\\' && i + 1 < part.length) { i++; }
+            else if (part[i] === '=') { eqIdx = i; break; }
+        }
+        if (eqIdx === -1) {
+            tags.push({ key: unescape(part) });
+        } else {
+            const key = unescape(part.slice(0, eqIdx));
+            const val = unescape(part.slice(eqIdx + 1));
+            if (key === '_') {
+                metric = val;
+            } else {
+                tags.push({ key, value: val });
+            }
+        }
+    }
+    return { metric, tags };
+}
+
+// Render a parsed metric name as a DOM element.
+function renderMetricName(raw) {
+    const { metric, tags } = parseMetricName(raw);
+    const span = document.createElement('span');
+    span.className = 'metric-name';
+
+    const name = document.createElement('span');
+    name.className = 'metric-name-key';
+    name.textContent = metric;
+    span.appendChild(name);
+
+    for (const tag of tags) {
+        const tagEl = document.createElement('span');
+        tagEl.className = 'metric-tag';
+        if (tag.value !== undefined) {
+            tagEl.innerHTML = `<span class="metric-tag-key">${escapeHtml(tag.key)}</span>=<span class="metric-tag-value">${escapeHtml(tag.value)}</span>`;
+        } else {
+            tagEl.textContent = tag.key;
+        }
+        span.appendChild(tagEl);
+    }
+    return span;
 }
 
 function escapeHtml(s) {

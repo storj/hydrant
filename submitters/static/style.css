@@ -538,6 +538,15 @@ h1 {
     z-index: 1;
 }
 
+.waterfall-bar-expanded::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    border-top: 6px solid rgba(255, 255, 255, 0.5);
+    border-left: 6px solid transparent;
+}
+
 .waterfall-bar-success {
     background: #2563eb;
 }
@@ -624,4 +633,32 @@ h1 {
 .trace-view-btn:hover {
     background: #4a9eff;
     color: #fff;
+}
+
+/* Metric name display */
+.metric-name {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.metric-name-key {
+    font-weight: 600;
+}
+
+.metric-tag {
+    font-size: 0.85em;
+    color: #6c757d;
+    background: #e9ecef;
+    padding: 1px 5px;
+    border-radius: 3px;
+}
+
+.metric-tag-key {
+    color: #495057;
+}
+
+.metric-tag-value {
+    color: #6c757d;
 }

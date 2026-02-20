@@ -1,3 +1,51 @@
+// Theme management
+(function initTheme() {
+    const stored = localStorage.getItem('theme');
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
+    const theme = stored || (prefersDark.matches ? 'dark' : 'light');
+    document.documentElement.dataset.theme = theme;
+
+    function updateToggleIcon() {
+        const btn = document.getElementById('themeToggle');
+        if (btn) btn.textContent = document.documentElement.dataset.theme === 'dark' ? '\u263E' : '\u2600';
+    }
+
+    function applyTheme(next) {
+        document.documentElement.dataset.theme = next;
+        updateToggleIcon();
+        // Re-render any visible SVG charts so they pick up new colors
+        if (lastQueryData && document.getElementById('results')?.children.length > 0) {
+            renderQueryResults(lastQueryData);
+        }
+    }
+
+    // Update icon once DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            updateToggleIcon();
+            document.getElementById('themeToggle').addEventListener('click', () => {
+                const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+                localStorage.setItem('theme', next);
+                applyTheme(next);
+            });
+        });
+    } else {
+        updateToggleIcon();
+        document.getElementById('themeToggle').addEventListener('click', () => {
+            const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+            localStorage.setItem('theme', next);
+            applyTheme(next);
+        });
+    }
+
+    // Follow system preference if no manual choice stored
+    prefersDark.addEventListener('change', (e) => {
+        if (!localStorage.getItem('theme')) {
+            applyTheme(e.matches ? 'dark' : 'light');
+        }
+    });
+})();
+
 // State
 let currentPath = null;
 let metricExpandedState = {};
@@ -6,6 +54,7 @@ let svgTooltip = null;
 let knownKinds = {}; // Cache path -> kind mappings
 let knownExtras = {}; // Cache path -> extra data
 let lastQuery = null; // Track last query to detect changes
+let lastQueryData = null; // Cache last query result for theme re-render
 let liveEventSource = null; // Active SSE connection
 let liveAutoScroll = true; // Auto-scroll live view
 let statsInterval = null; // Auto-refresh interval for stats
@@ -212,12 +261,12 @@ async function showConfig() {
     closeLiveStream();
     const mainContent = document.getElementById('main-content');
     mainContent.innerHTML = `
-        <div style="margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #dee2e6;">
-            <h2 style="margin: 0 0 5px 0; color: #333;">Configuration</h2>
+        <div class="section-border" style="margin-bottom: 20px;">
+            <h2 class="section-heading">Configuration</h2>
         </div>
         <div id="configLoading" class="loading">Loading...</div>
         <div id="configError" class="error" style="display: none;"></div>
-        <pre id="configContent" style="flex: 1; margin: 0; padding: 10px; font-size: 13px; overflow: auto; background: #f8f9fa; border-radius: 4px; white-space: pre-wrap; word-break: break-word;"></pre>
+        <pre id="configContent" class="config-content"></pre>
     `;
 
     try {
@@ -279,18 +328,19 @@ async function fetchAndRenderStats(container, basePath) {
         }
 
         const table = document.createElement('table');
-        table.style.cssText = 'border-collapse: collapse; font-size: 14px; margin-top: 10px; width: max-content; border: 1px solid #dee2e6;';
+        table.className = 'stats-table';
 
         for (const s of stats) {
             const row = document.createElement('tr');
 
             const nameCell = document.createElement('td');
-            nameCell.style.cssText = 'padding: 8px 16px; color: #6c757d; border: 1px solid #dee2e6;';
+            nameCell.className = 'stats-cell stats-label';
             nameCell.textContent = s.name;
             row.appendChild(nameCell);
 
             const valueCell = document.createElement('td');
-            valueCell.style.cssText = 'padding: 8px 16px; font-weight: 500; font-variant-numeric: tabular-nums; border: 1px solid #dee2e6;';
+            valueCell.className = 'stats-cell';
+            valueCell.style.cssText = 'font-weight: 500; font-variant-numeric: tabular-nums;';
             valueCell.textContent = s.value.toLocaleString();
             row.appendChild(valueCell);
 
@@ -313,8 +363,8 @@ function startStatsView(container, basePath) {
 // Render Hydrator query interface (with tabs: Query / Live / Stats)
 function renderHydratorInterface(container, basePath) {
     container.innerHTML = `
-        <div style="margin-bottom: 0; padding-bottom: 15px; border-bottom: 2px solid #dee2e6;">
-            <h2 style="margin: 0 0 5px 0; color: #333;">HydratorSubmitter</h2>
+        <div class="section-border" style="margin-bottom: 0;">
+            <h2 class="section-heading">HydratorSubmitter</h2>
             <div class="tabs" id="hydratorTabs" style="margin-bottom: 0; border-bottom: none;">
                 <button class="tab-button active" data-htab="query">Query</button>
                 <button class="tab-button" data-htab="live">Live</button>
@@ -323,14 +373,13 @@ function renderHydratorInterface(container, basePath) {
         </div>
         <div id="hydratorQueryTab" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
             <form id="queryForm" style="flex-shrink: 0; margin-bottom: 20px; margin-top: 15px;">
-                <div style="margin-bottom: 15px;">
-                    <label for="query" style="display: block; margin-bottom: 5px; color: #555; font-weight: 500;">Query:</label>
-                    <input type="text" id="query" name="q" value="{ }" required
-                           style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 14px;" />
+                <div style="margin-bottom: 15px; padding: 0 2px;">
+                    <label for="query" class="form-label">Query:</label>
+                    <input type="text" id="query" name="q" value="" class="form-input" />
                 </div>
 
-                <div style="margin-bottom: 20px; padding: 12px; background-color: #f8f9fa; border-radius: 4px;">
-                    <div style="font-weight: 500; margin-bottom: 8px; color: #555;">Options</div>
+                <div class="form-options">
+                    <div class="form-options-title">Options</div>
                     <div style="display: flex; gap: 15px; flex-wrap: wrap; align-items: center;">
                         <label style="display: flex; align-items: center; gap: 5px;">
                             <input type="checkbox" id="merged" name="m" />
@@ -342,20 +391,16 @@ function renderHydratorInterface(container, basePath) {
                         </label>
                         <label style="display: flex; align-items: center; gap: 5px;">
                             <span>Quantiles:</span>
-                            <input type="number" id="numQuantiles" name="n" value="21" min="2"
-                                   style="width: 60px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px;" />
+                            <input type="number" id="numQuantiles" name="n" value="21" min="2" class="form-input-small" />
                         </label>
                         <label style="display: flex; align-items: center; gap: 5px; display: none;" id="expSpacingOption">
                             <span>Exp spacing:</span>
-                            <input type="number" id="expSpacing" name="e" value="8" min="1"
-                                   style="width: 60px; padding: 4px 8px; border: 1px solid #ddd; border-radius: 4px;" />
+                            <input type="number" id="expSpacing" name="e" value="8" min="1" class="form-input-small" />
                         </label>
                     </div>
                 </div>
 
-                <button type="submit" style="padding: 10px 20px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px;">
-                    Submit Query
-                </button>
+                <button type="submit" class="btn-submit">Submit Query</button>
             </form>
 
             <div id="error" class="error" style="display: none;"></div>
@@ -437,6 +482,7 @@ async function submitQuery(basePath) {
         const data = await response.json();
 
         hideLoading('loading');
+        lastQueryData = data;
         renderQueryResults(data);
     } catch (error) {
         hideLoading('loading');
@@ -459,11 +505,7 @@ function renderQueryResults(data) {
     if (mergedRequested && data.Data.length === 1) {
         // Merged result
         const resultItem = document.createElement('div');
-        resultItem.className = 'result-item merged-result';
-        resultItem.style.marginBottom = '20px';
-        resultItem.style.padding = '15px';
-        resultItem.style.border = '1px solid #dee2e6';
-        resultItem.style.borderRadius = '4px';
+        resultItem.className = 'result-item merged-result result-item-card';
 
         const header = document.createElement('h2');
         header.style.marginTop = '0';
@@ -508,16 +550,12 @@ function renderQueryResults(data) {
             });
 
             const summary = document.createElement('summary');
-            summary.style.cursor = 'pointer';
-            summary.style.padding = '10px';
-            summary.style.backgroundColor = '#f8f9fa';
-            summary.style.borderRadius = '4px';
-            summary.style.fontWeight = '500';
+            summary.className = 'result-summary';
             summary.appendChild(renderMetricName(name));
             details.appendChild(summary);
 
             const content = document.createElement('div');
-            content.style.padding = '15px';
+            content.className = 'result-content';
             renderHistogram(content, data.Data[index], name);
             details.appendChild(content);
 
@@ -611,16 +649,13 @@ function renderHistogram(container, histData, metricKey) {
         rawDataDetails.appendChild(rawDataSummary);
 
         const table = document.createElement('table');
-        table.style.width = '100%';
-        table.style.borderCollapse = 'collapse';
-        table.style.marginTop = '10px';
-        table.style.fontSize = '13px';
+        table.className = 'quantile-table';
 
         const thead = document.createElement('thead');
         thead.innerHTML = `
-            <tr style="background-color: #f8f9fa;">
-                <th style="padding: 8px; text-align: left; border-bottom: 2px solid #dee2e6;">Quantile</th>
-                <th style="padding: 8px; text-align: right; border-bottom: 2px solid #dee2e6;">Value</th>
+            <tr>
+                <th>Quantile</th>
+                <th style="text-align: right;">Value</th>
             </tr>
         `;
         table.appendChild(thead);
@@ -650,8 +685,6 @@ function renderHistogram(container, histData, metricKey) {
         ranges.forEach(range => {
             const row = document.createElement('tr');
             const qCell = document.createElement('td');
-            qCell.style.padding = '6px 8px';
-            qCell.style.borderBottom = '1px solid #dee2e6';
 
             if (range.startQ === range.endQ) {
                 qCell.textContent = range.startQ.toFixed(precision);
@@ -661,9 +694,7 @@ function renderHistogram(container, histData, metricKey) {
             row.appendChild(qCell);
 
             const vCell = document.createElement('td');
-            vCell.style.padding = '6px 8px';
             vCell.style.textAlign = 'right';
-            vCell.style.borderBottom = '1px solid #dee2e6';
             vCell.textContent = range.value;
             row.appendChild(vCell);
 
@@ -680,20 +711,15 @@ function renderHistogram(container, histData, metricKey) {
 
 function addStat(container, label, value) {
     const stat = document.createElement('div');
-    stat.style.padding = '10px';
-    stat.style.backgroundColor = '#f8f9fa';
-    stat.style.borderRadius = '4px';
+    stat.className = 'stat-summary';
 
     const statLabel = document.createElement('div');
-    statLabel.style.fontSize = '12px';
-    statLabel.style.color = '#6c757d';
-    statLabel.style.marginBottom = '5px';
+    statLabel.className = 'stat-summary-label';
     statLabel.textContent = label;
     stat.appendChild(statLabel);
 
     const statValue = document.createElement('div');
-    statValue.style.fontSize = '16px';
-    statValue.style.fontWeight = '500';
+    statValue.className = 'stat-summary-value';
     statValue.textContent = value;
     stat.appendChild(statValue);
 
@@ -783,6 +809,12 @@ function createQuantilesSVG(quantiles, useLogScale) {
         }
     }
 
+    const styles = getComputedStyle(document.documentElement);
+    const gridColor = styles.getPropertyValue('--chart-grid').trim() || '#e0e0e0';
+    const axisColor = styles.getPropertyValue('--chart-axis').trim() || '#333';
+    const accentColor = styles.getPropertyValue('--accent').trim() || '#007bff';
+    const textColor = styles.getPropertyValue('--text-primary').trim() || '#333';
+
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('width', width);
     svg.setAttribute('height', height);
@@ -801,7 +833,7 @@ function createQuantilesSVG(quantiles, useLogScale) {
         gridLine.setAttribute('y1', y);
         gridLine.setAttribute('x2', graphWidth);
         gridLine.setAttribute('y2', y);
-        gridLine.setAttribute('stroke', '#e0e0e0');
+        gridLine.setAttribute('stroke', gridColor);
         gridLine.setAttribute('stroke-width', '1');
         g.appendChild(gridLine);
     }
@@ -812,7 +844,7 @@ function createQuantilesSVG(quantiles, useLogScale) {
     xAxis.setAttribute('y1', graphHeight);
     xAxis.setAttribute('x2', graphWidth);
     xAxis.setAttribute('y2', graphHeight);
-    xAxis.setAttribute('stroke', '#333');
+    xAxis.setAttribute('stroke', axisColor);
     xAxis.setAttribute('stroke-width', '2');
     g.appendChild(xAxis);
 
@@ -821,7 +853,7 @@ function createQuantilesSVG(quantiles, useLogScale) {
     yAxis.setAttribute('y1', 0);
     yAxis.setAttribute('x2', 0);
     yAxis.setAttribute('y2', graphHeight);
-    yAxis.setAttribute('stroke', '#333');
+    yAxis.setAttribute('stroke', axisColor);
     yAxis.setAttribute('stroke-width', '2');
     g.appendChild(yAxis);
 
@@ -833,7 +865,7 @@ function createQuantilesSVG(quantiles, useLogScale) {
         tick.setAttribute('y1', graphHeight);
         tick.setAttribute('x2', x);
         tick.setAttribute('y2', graphHeight + 5);
-        tick.setAttribute('stroke', '#333');
+        tick.setAttribute('stroke', axisColor);
         tick.setAttribute('stroke-width', '1');
         g.appendChild(tick);
 
@@ -842,6 +874,7 @@ function createQuantilesSVG(quantiles, useLogScale) {
         label.setAttribute('y', graphHeight + 20);
         label.setAttribute('text-anchor', 'middle');
         label.setAttribute('font-size', '12');
+        label.setAttribute('fill', textColor);
         label.textContent = (i / 10).toFixed(1);
         g.appendChild(label);
     }
@@ -854,7 +887,7 @@ function createQuantilesSVG(quantiles, useLogScale) {
         tick.setAttribute('y1', y);
         tick.setAttribute('x2', 0);
         tick.setAttribute('y2', y);
-        tick.setAttribute('stroke', '#333');
+        tick.setAttribute('stroke', axisColor);
         tick.setAttribute('stroke-width', '1');
         g.appendChild(tick);
 
@@ -865,6 +898,7 @@ function createQuantilesSVG(quantiles, useLogScale) {
         label.setAttribute('y', y + 4);
         label.setAttribute('text-anchor', 'end');
         label.setAttribute('font-size', '12');
+        label.setAttribute('fill', textColor);
         label.textContent = formatValue(actualValue);
         g.appendChild(label);
     }
@@ -885,23 +919,15 @@ function createQuantilesSVG(quantiles, useLogScale) {
 
     const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
     path.setAttribute('d', pathData);
-    path.setAttribute('stroke', '#007bff');
+    path.setAttribute('stroke', accentColor);
     path.setAttribute('stroke-width', '2');
     path.setAttribute('fill', 'none');
     g.appendChild(path);
 
-    // Create or reuse tooltip
+    // Create or reuse tooltip (reuses waterfall-tooltip class for consistent styling)
     if (!svgTooltip) {
         svgTooltip = document.createElement('div');
-        svgTooltip.style.position = 'fixed';
-        svgTooltip.style.display = 'none';
-        svgTooltip.style.backgroundColor = 'rgba(0, 0, 0, 0.8)';
-        svgTooltip.style.color = 'white';
-        svgTooltip.style.padding = '8px 12px';
-        svgTooltip.style.borderRadius = '4px';
-        svgTooltip.style.fontSize = '12px';
-        svgTooltip.style.pointerEvents = 'none';
-        svgTooltip.style.zIndex = '1000';
+        svgTooltip.className = 'waterfall-tooltip';
         document.body.appendChild(svgTooltip);
     }
     const tooltipDiv = svgTooltip;
@@ -916,7 +942,7 @@ function createQuantilesSVG(quantiles, useLogScale) {
         circle.setAttribute('cx', x);
         circle.setAttribute('cy', y);
         circle.setAttribute('r', 4);
-        circle.setAttribute('fill', '#007bff');
+        circle.setAttribute('fill', accentColor);
         circle.style.cursor = 'pointer';
 
         circle.addEventListener('mouseenter', () => {
@@ -946,6 +972,7 @@ function createQuantilesSVG(quantiles, useLogScale) {
     xAxisLabel.setAttribute('text-anchor', 'middle');
     xAxisLabel.setAttribute('font-size', '14');
     xAxisLabel.setAttribute('font-weight', '500');
+    xAxisLabel.setAttribute('fill', textColor);
     xAxisLabel.textContent = 'Quantile';
     g.appendChild(xAxisLabel);
 
@@ -955,6 +982,7 @@ function createQuantilesSVG(quantiles, useLogScale) {
     yAxisLabel.setAttribute('text-anchor', 'middle');
     yAxisLabel.setAttribute('font-size', '14');
     yAxisLabel.setAttribute('font-weight', '500');
+    yAxisLabel.setAttribute('fill', textColor);
     yAxisLabel.setAttribute('transform', 'rotate(-90)');
     yAxisLabel.textContent = 'Value';
     g.appendChild(yAxisLabel);
@@ -968,14 +996,14 @@ function renderExtraLines(path) {
     const extra = knownExtras[path] || {};
     return Object.entries(extra)
         .filter(([, v]) => v)
-        .map(([k, v]) => `<div style="color: #6c757d; font-size: 14px; margin-bottom: 10px;">${escapeHtml(k)}: <code>${escapeHtml(v)}</code></div>`)
+        .map(([k, v]) => `<div class="extra-line">${escapeHtml(k)}: <code>${escapeHtml(v)}</code></div>`)
         .join('');
 }
 
 function renderLiveInterface(container, path, kind) {
     container.innerHTML = `
-        <div style="margin-bottom: 0; padding-bottom: 15px; border-bottom: 2px solid #dee2e6;">
-            <h2 style="margin: 0 0 5px 0; color: #333;">${kind}</h2>
+        <div class="section-border" style="margin-bottom: 0;">
+            <h2 class="section-heading">${kind}</h2>
             ${renderExtraLines(path)}
             <div class="tabs" id="submitterTabs" style="margin-bottom: 0; border-bottom: none;">
                 <button class="tab-button active" data-stab="live">Live</button>
@@ -1030,16 +1058,16 @@ async function startLiveView(container, basePath) {
 
     container.innerHTML = `
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; flex-shrink: 0;">
-            <span style="font-weight: 500; color: #555;">Live Events</span>
+            <span class="live-label">Live Events</span>
         </div>
         <div style="flex-shrink: 0; margin-bottom: 8px;">
             <input type="text" id="liveFilter" class="live-filter" placeholder="Filter events..." />
         </div>
         <div id="liveEventsWrap" style="flex: 1; position: relative; overflow: hidden; border-radius: 4px;">
-            <div id="liveEvents" style="height: 100%; overflow-y: auto; font-family: monospace; font-size: 13px; background: #1e1e1e; color: #d4d4d4; padding: 4px;"></div>
+            <div id="liveEvents" class="live-events-panel"></div>
             <button id="resumeScroll" class="resume-scroll-btn" style="display: none;">Resume auto-scroll</button>
         </div>
-        <div id="liveStatus" style="flex-shrink: 0; padding: 5px 0; font-size: 12px; color: #6c757d;"></div>
+        <div id="liveStatus" class="live-status"></div>
     `;
 
     const eventsDiv = document.getElementById('liveEvents');
@@ -1177,14 +1205,14 @@ function buildSummary(info, ev) {
         } else if (success === 'false') {
             indicator = `<span class="event-error"> fail</span>`;
         }
-        return `${escapeHtml(name)} <span style="color: #6c757d;">${escapeHtml(dur)}</span>${indicator}`;
+        return `${escapeHtml(name)} <span class="event-dur">${escapeHtml(dur)}</span>${indicator}`;
     }
     if (info.type === 'log') {
         return escapeHtml(info.map['message'] || '');
     }
     // Other: first 3 key=value pairs (excluding timestamp)
     const pairs = ev.filter(a => a.key !== 'timestamp').slice(0, 3);
-    return pairs.map(a => `<span style="color: #9cdcfe;">${escapeHtml(a.key)}</span>=<span style="color: #ce9178;">${escapeHtml(a.value)}</span>`).join(' ');
+    return pairs.map(a => `<span class="event-kv-key">${escapeHtml(a.key)}</span>=<span class="event-kv-val">${escapeHtml(a.value)}</span>`).join(' ');
 }
 
 // Serialize event text for filter matching
@@ -1220,6 +1248,11 @@ function appendLiveEvent(container, ev, filterText) {
 
     summary.addEventListener('click', () => {
         row.classList.toggle('expanded');
+        if (row.classList.contains('expanded') && liveAutoScroll) {
+            liveAutoScroll = false;
+            const btn = document.getElementById('resumeScroll');
+            if (btn) btn.style.display = '';
+        }
     });
 
     row.appendChild(summary);
@@ -1231,7 +1264,7 @@ function appendLiveEvent(container, ev, filterText) {
     for (const ann of ev) {
         const line = document.createElement('div');
         line.className = 'detail-line';
-        line.innerHTML = `<span style="color: #9cdcfe;">${escapeHtml(ann.key)}</span><span style="color: #d4d4d4;">=</span><span style="color: #ce9178;">${escapeHtml(ann.value)}</span>`;
+        line.innerHTML = `<span class="detail-key">${escapeHtml(ann.key)}</span><span class="detail-sep">=</span><span class="detail-val">${escapeHtml(ann.value)}</span>`;
         details.appendChild(line);
     }
 
@@ -1246,8 +1279,8 @@ function appendLiveEvent(container, ev, filterText) {
 // Render TraceBuffer interface with Traces / Live / Stats tabs
 function renderTraceBufferInterface(container, basePath) {
     container.innerHTML = `
-        <div style="margin-bottom: 0; padding-bottom: 15px; border-bottom: 2px solid #dee2e6;">
-            <h2 style="margin: 0 0 5px 0; color: #333;">TraceBufferSubmitter</h2>
+        <div class="section-border" style="margin-bottom: 0;">
+            <h2 class="section-heading">TraceBufferSubmitter</h2>
             ${renderExtraLines(basePath)}
             <div class="tabs" id="tracebufTabs" style="margin-bottom: 0; border-bottom: none;">
                 <button class="tab-button active" data-tbtab="traces">Traces</button>
@@ -1307,7 +1340,7 @@ async function fetchAndRenderTraces(container, basePath) {
         toolbar.style.cssText = 'flex-shrink: 0; margin-bottom: 10px;';
         const refreshBtn = document.createElement('button');
         refreshBtn.textContent = 'Refresh';
-        refreshBtn.style.cssText = 'padding: 6px 16px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;';
+        refreshBtn.className = 'btn-primary';
         refreshBtn.addEventListener('click', () => fetchAndRenderTraces(container, basePath));
         toolbar.appendChild(refreshBtn);
         container.appendChild(toolbar);
@@ -1424,7 +1457,7 @@ async function fetchAndRenderTraces(container, basePath) {
                 for (const ann of span) {
                     const line = document.createElement('div');
                     line.className = 'detail-line';
-                    line.innerHTML = `<span style="color: #9cdcfe;">${escapeHtml(ann.key)}</span><span style="color: #d4d4d4;">=</span><span style="color: #ce9178;">${escapeHtml(ann.value)}</span>`;
+                    line.innerHTML = `<span class="detail-key">${escapeHtml(ann.key)}</span><span class="detail-sep">=</span><span class="detail-val">${escapeHtml(ann.value)}</span>`;
                     evDetails.appendChild(line);
                 }
 

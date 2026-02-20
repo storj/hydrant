@@ -149,9 +149,12 @@ func (h *HydratorSubmitter) Query(q []byte, cb func(name []byte, hist *flathist.
 	bm := qu.Eval(&h.idx)
 	h.mu.Unlock()
 
+	var name []byte
+	var ok bool
+
 	memindex.Iter(bm, func(id memindex.Id) bool {
 		h.mu.Lock()
-		name, ok := h.idx.AppendNameById(id, nil)
+		name, ok = h.idx.AppendNameById(id, name[:0])
 		h.mu.Unlock()
 
 		if !ok {
@@ -160,18 +163,6 @@ func (h *HydratorSubmitter) Query(q []byte, cb func(name []byte, hist *flathist.
 		return cb(name, h.hists[id])
 	})
 	return nil
-}
-
-func (h *HydratorSubmitter) Keys(cb func([]byte) bool) bool {
-	return h.idx.TagKeys(cb)
-}
-
-func (h *HydratorSubmitter) KeyValues(key []byte, cb func([]byte) bool) bool {
-	return h.idx.TagValues(key, cb)
-}
-
-func (h *HydratorSubmitter) Annotations(cb func([]byte) bool) bool {
-	return h.idx.Tags(cb)
 }
 
 func (h *HydratorSubmitter) Handler() http.Handler {

@@ -1471,6 +1471,7 @@ function packSpansIntoLanes(spans, traceStart, traceDuration) {
     }
 
     const viewEnd = traceStart + traceDuration;
+    const spanLaneMap = {}; // spanId -> lane index
 
     for (const idx of indices) {
         const span = spans[idx];
@@ -1491,16 +1492,23 @@ function packSpansIntoLanes(spans, traceStart, traceDuration) {
         const leftPct = visualTotal > 0 ? ((visualStart - traceStart) / visualTotal) * 100 : 0;
         const widthPct = visualTotal > 0 ? (visualDur / visualTotal) * 100 : 100;
 
+        // Start searching from the parent's lane (or 0 for root spans)
+        // so children are always placed below their parent.
+        const parentLane = spanLaneMap[span.parentId];
+        const startLane = parentLane !== undefined ? parentLane : 0;
+
         let placed = false;
-        for (const lane of lanes) {
-            if (fitsInLane(lane, visualStart, visualEnd)) {
-                lane.items.push({ span, leftPct, widthPct, expanded });
-                insertInterval(lane, visualStart, visualEnd);
+        for (let li = startLane; li < lanes.length; li++) {
+            if (fitsInLane(lanes[li], visualStart, visualEnd)) {
+                lanes[li].items.push({ span, leftPct, widthPct, expanded });
+                insertInterval(lanes[li], visualStart, visualEnd);
+                spanLaneMap[span.spanId] = li;
                 placed = true;
                 break;
             }
         }
         if (!placed) {
+            spanLaneMap[span.spanId] = lanes.length;
             lanes.push({
                 intervals: [{ start: span.start, end: visualEnd }],
                 items: [{ span, leftPct, widthPct, expanded }],
@@ -1625,7 +1633,7 @@ function renderWaterfallView(container, allSpans, rootName, traceId, basePath, z
     const tickCount = 5;
     for (let i = 0; i <= tickCount; i++) {
         const tick = document.createElement('span');
-        tick.textContent = formatDuration((visualTotal * i) / tickCount);
+        tick.textContent = formatDuration((viewStart - traceStart) + (viewDuration * i) / tickCount);
         timeline.appendChild(tick);
     }
     wfContainer.appendChild(timeline);

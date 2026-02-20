@@ -23,7 +23,7 @@ func main() {
 		Process: process.DefaultStore,
 	}.New(config.Config{
 		Submitter: config.TraceBufferSubmitter{
-			Filter: "not(key(success)) || eq(key(name), http_request)",
+			// Filter: "not(key(success)) || eq(key(name), http_request)",
 		},
 	})
 	if err != nil {

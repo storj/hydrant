@@ -1312,6 +1312,15 @@ async function fetchAndRenderTraces(container, basePath) {
         toolbar.appendChild(refreshBtn);
         container.appendChild(toolbar);
 
+        // Filter input
+        const filterInput = document.createElement('input');
+        filterInput.type = 'text';
+        filterInput.className = 'live-filter';
+        filterInput.placeholder = 'Filter traces...';
+        filterInput.style.cssText = 'margin-left: 10px; flex: 1;';
+        toolbar.appendChild(filterInput);
+        toolbar.style.cssText = 'flex-shrink: 0; margin-bottom: 10px; display: flex; align-items: center;';
+
         if (!traces || traces.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'empty-state';
@@ -1423,9 +1432,26 @@ async function fetchAndRenderTraces(container, basePath) {
                 details.appendChild(evRow);
             }
 
+            // Build search text from trace ID, root name, and all span annotations
+            const searchParts = [trace.trace_id, rootName, rootDuration];
+            for (const span of trace.spans) {
+                for (const a of span) {
+                    searchParts.push(a.key, a.value);
+                }
+            }
+            row._searchText = searchParts.join(' ').toLowerCase();
+
             row.appendChild(details);
             list.appendChild(row);
         }
+
+        // Wire up filter
+        filterInput.addEventListener('input', () => {
+            const q = filterInput.value.toLowerCase().trim();
+            for (const row of list.children) {
+                row.style.display = (!q || row._searchText.includes(q)) ? '' : 'none';
+            }
+        });
 
         container.appendChild(list);
     } catch (e) {
@@ -1442,9 +1468,6 @@ function packSpansIntoLanes(spans, traceStart, traceDuration) {
 
     // Compute visual duration for each span.
     const visualDurations = spans.map(s => Math.max(s.duration, minDuration));
-    // visualTotal is just traceDuration — spans extending beyond the view
-    // get clamped at the edges during rendering.
-    const visualTotal = traceDuration;
 
     // Root span first, then by start time, then by duration descending
     const indices = spans.map((_, i) => i);
@@ -1489,7 +1512,7 @@ function packSpansIntoLanes(spans, traceStart, traceDuration) {
             visualEnd = visualStart + visualDur;
         }
 
-        const leftPct = visualTotal > 0 ? ((visualStart - traceStart) / visualTotal) * 100 : 0;
+        const leftPct = traceDuration > 0 ? ((visualStart - traceStart) / traceDuration) * 100 : 0;
         const widthPct = visualTotal > 0 ? (visualDur / visualTotal) * 100 : 100;
 
         // Start searching from the parent's lane (or 0 for root spans)

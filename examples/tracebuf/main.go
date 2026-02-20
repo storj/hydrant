@@ -78,6 +78,18 @@ func authCheck(ctx context.Context) {
 	ctx, span := hydrant.StartSpanNamed(ctx, "auth_check")
 	defer span.Done(nil)
 
+	// Near-instant checks to trigger min-width expansion in the waterfall.
+	func() {
+		_, s := hydrant.StartSpanNamed(ctx, "parse_token")
+		defer s.Done(nil)
+		time.Sleep(time.Duration(50+rand.IntN(100)) * time.Microsecond)
+	}()
+	func() {
+		_, s := hydrant.StartSpanNamed(ctx, "verify_signature")
+		defer s.Done(nil)
+		time.Sleep(time.Duration(20+rand.IntN(80)) * time.Microsecond)
+	}()
+
 	time.Sleep(jitter(3))
 	dbLookup(ctx, "users")
 }

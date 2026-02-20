@@ -1513,7 +1513,7 @@ function packSpansIntoLanes(spans, traceStart, traceDuration) {
         }
 
         const leftPct = traceDuration > 0 ? ((visualStart - traceStart) / traceDuration) * 100 : 0;
-        const widthPct = visualTotal > 0 ? (visualDur / visualTotal) * 100 : 100;
+        const widthPct = traceDuration > 0 ? (visualDur / traceDuration) * 100 : 100;
 
         // Start searching from the parent's lane (or 0 for root spans)
         // so children are always placed below their parent.
@@ -1538,7 +1538,7 @@ function packSpansIntoLanes(spans, traceStart, traceDuration) {
             });
         }
     }
-    return { lanes, visualTotal };
+    return lanes;
 }
 
 // Format nanoseconds as a human-readable duration string.
@@ -1557,11 +1557,10 @@ function renderTraceWaterfall(container, trace, basePath) {
     let rootName = '';
     for (const span of trace.spans) {
         const map = {};
-        const annotations = [];
         for (const a of span) {
             map[a.key] = a.value;
-            annotations.push(a);
         }
+        const annotations = span;
         const start = Number(BigInt(map['start'] || '0'));
         const end = Number(BigInt(map['timestamp'] || '0'));
         const duration = end - start;
@@ -1600,7 +1599,7 @@ function renderWaterfallView(container, allSpans, rootName, traceId, basePath, z
     }
 
     // Pack into lanes
-    const { lanes, visualTotal } = packSpansIntoLanes(allSpans, viewStart, viewDuration);
+    const lanes = packSpansIntoLanes(allSpans, viewStart, viewDuration);
 
     // Build UI
     container.innerHTML = '';
@@ -1671,6 +1670,9 @@ function renderWaterfallView(container, allSpans, rootName, traceId, basePath, z
         document.body.appendChild(tooltip);
     }
 
+    // System fields to skip in tooltip annotations
+    const sysKeys = new Set(['name', 'start', 'timestamp', 'duration', 'success', 'span_id', 'parent_id', 'trace_id']);
+
     // Map span_id to bar element for parent highlighting
     const barBySpanId = {};
 
@@ -1686,12 +1688,6 @@ function renderWaterfallView(container, allSpans, rootName, traceId, basePath, z
             let finalLeft = Math.max(leftPct, 0);
             let finalWidth = Math.min(leftPct + widthPct, 100) - finalLeft;
             if (finalWidth <= 0) continue; // entirely off-screen
-
-            // If min-width expansion pushed past 100%, shift left to keep full width
-            if (expanded && clippedRight) {
-                finalLeft = Math.max(100 - widthPct, 0);
-                finalWidth = Math.min(widthPct, 100);
-            }
 
             // Snap to 0.1% grid so nearly-identical min-width bars align
             // and containment checks work for click-to-zoom.
@@ -1726,7 +1722,6 @@ function renderWaterfallView(container, allSpans, rootName, traceId, basePath, z
                 html += `<div class="tt-row"><span class="tt-label">Status:</span> <span class="${span.success ? 'tt-success' : 'tt-error'}">${span.success ? 'success' : 'error'}</span></div>`;
 
                 // Show user annotations (skip system fields)
-                const sysKeys = new Set(['name', 'start', 'timestamp', 'duration', 'success', 'span_id', 'parent_id', 'trace_id']);
                 for (const a of span.annotations) {
                     if (!sysKeys.has(a.key)) {
                         html += `<div class="tt-row"><span class="tt-label">${escapeHtml(a.key)}:</span> ${escapeHtml(a.value)}</div>`;

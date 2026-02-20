@@ -527,11 +527,13 @@ h1 {
 }
 
 .waterfall-bar:hover {
-    opacity: 0.85;
+    outline: 2px solid #fff;
+    outline-offset: -1px;
+    z-index: 2;
 }
 
 .waterfall-bar-parent {
-    outline: 2px solid #fff;
+    outline: 2px solid #ccc;
     outline-offset: -1px;
     z-index: 1;
 }

@@ -1557,12 +1557,13 @@ function renderTraceWaterfall(container, trace, basePath) {
 
 function renderWaterfallView(container, allSpans, rootName, traceId, basePath, zoomSpan) {
     // Determine time bounds
+    const traceStart = Math.min(...allSpans.map(s => s.start));
     let viewStart, viewDuration;
     if (zoomSpan) {
         viewStart = zoomSpan.start;
         viewDuration = zoomSpan.duration;
     } else {
-        viewStart = Math.min(...allSpans.map(s => s.start));
+        viewStart = traceStart;
         const viewEnd = Math.max(...allSpans.map(s => s.start + s.duration));
         viewDuration = viewEnd - viewStart;
     }
@@ -1686,10 +1687,10 @@ function renderWaterfallView(container, allSpans, rootName, traceId, basePath, z
                 if (parentBar && parentBar !== bar) {
                     parentBar.classList.add('waterfall-bar-parent');
                 }
-                const offset = span.start - viewStart;
+                const offset = span.start - traceStart;
                 let html = `<div class="tt-name">${escapeHtml(span.name)}</div>`;
                 html += `<div class="tt-row"><span class="tt-label">Duration:</span> ${escapeHtml(span.map['duration'] || formatDuration(span.duration))}</div>`;
-                html += `<div class="tt-row"><span class="tt-label">Offset:</span> +${formatDuration(offset)}</div>`;
+                html += `<div class="tt-row"><span class="tt-label">Offset:</span> ${formatDuration(offset)}</div>`;
                 html += `<div class="tt-row"><span class="tt-label">Status:</span> <span class="${span.success ? 'tt-success' : 'tt-error'}">${span.success ? 'success' : 'error'}</span></div>`;
 
                 // Show user annotations (skip system fields)
@@ -1705,11 +1706,8 @@ function renderWaterfallView(container, allSpans, rootName, traceId, basePath, z
             });
 
             bar.addEventListener('mousemove', (e) => {
-                let left = e.clientX + 12;
                 const tipWidth = tooltip.offsetWidth || 200;
-                if (left + tipWidth > window.innerWidth - 8) {
-                    left = e.clientX - tipWidth - 12;
-                }
+                const left = Math.min(e.clientX + 12, window.innerWidth - tipWidth - 8);
                 tooltip.style.left = left + 'px';
                 tooltip.style.top = (e.clientY + 12) + 'px';
             });
